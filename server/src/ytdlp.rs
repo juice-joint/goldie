@@ -1,10 +1,18 @@
 use std::path::PathBuf;
 
-use yt_dlp::Youtube;
+#[derive(Clone)]
+pub struct Fetcher {
+}
+
+impl Fetcher {
+    pub fn download_video_from_url(&self, url: String, output: impl AsRef<str>) {
+        println!("downloading video...")
+    }
+}
 
 #[derive(Clone)]
 pub struct Ytdlp {
-    pub fetcher: Youtube
+    pub fetcher: Fetcher
 }   
 
 #[derive(Debug)]
@@ -17,19 +25,7 @@ impl Ytdlp {
         let executables_dir = PathBuf::from("libs");
         let output_dir = PathBuf::from("output");
         
-        let fetcher = Youtube::with_new_binaries(executables_dir, output_dir)
-            .await
-            .map_err(|error| {
-                eprintln!("error downloading video: {}", error);
-                YtdlpError::SomethingWentWrong(error.to_string())
-            })?;
-        
-        fetcher.update_downloader()
-            .await
-            .map_err(|error| {
-                eprintln!("error downloading video: {}", error);
-                YtdlpError::SomethingWentWrong(error.to_string())
-            })?;
+        let fetcher = Fetcher {};
 
         Ok(Ytdlp { fetcher })
     }

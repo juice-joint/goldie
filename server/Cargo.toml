@@ -6,10 +6,11 @@ edition = "2021"
 [dependencies]
 async-channel = "2.3.1"
 axum = { version = "0.8.1", features = ["macros"] }
-serde = "1.0.217"
+axum-extra = { version = "0.10.0", features = ["typed-header"] }
+serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.134"
-tokio = { version = "1.42.0", features = ["rt-multi-thread"] }
+tokio = { version = "1.42.0", features = ["fs", "io-std", "io-util", "rt-multi-thread"] }
+tokio-util = { version = "0.7.13", features = ["io"] }
 tower = "0.5.2"
 tower-http = { version = "0.6.2", features = ["cors"] }
 uuid = { version = "1.11.0", features = ["fast-rng", "v4"] }
-yt-dlp = "1.2.3"

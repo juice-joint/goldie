@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -32,14 +32,14 @@ impl PartialEq for PlayableSong {
 }
 
 #[derive(Clone)]
-pub struct SongCoordinator {
+pub struct SongQueue {
     song_deque: VecDeque<PlayableSong>,
     current_song: Option<PlayableSong>
 }
 
-impl SongCoordinator {
-    pub fn new() -> SongCoordinator {
-        return SongCoordinator {
+impl SongQueue {
+    pub fn new() -> Self {
+        return Self {
             song_deque: VecDeque::new(),
             current_song: None
         }
@@ -56,7 +56,10 @@ impl SongCoordinator {
     }
 
     pub fn pop(&mut self) -> Option<PlayableSong> {
-        self.song_deque.pop_front()
+        self.song_deque.pop_front().map(|song| {
+            self.current_song = Some(song.clone());
+            song
+        })
     }
 
     pub fn reposition(&mut self, song: PlayableSong, position: usize) {
@@ -70,8 +73,68 @@ impl SongCoordinator {
     pub fn current(&self) -> Option<&PlayableSong> {
         self.current_song.as_ref()
     }
+}
 
-    pub fn set_current(&mut self, new_current: Option<PlayableSong>) {
-        self.current_song = new_current;
+struct SongActor {
+    receiver: mpsc::Receiver<SongActorMessage>,
+    song_deque: VecDeque<PlayableSong>,
+    current_song: Option<PlayableSong>
+}
+
+pub enum SongActorMessage {
+    QueueSong {
+        respond_to: oneshot::Sender<SongActorResponse>
+    },
+    RemoveSong {
+        respond_to: oneshot::Sender<SongActorResponse>
+    },
+    PopSong {
+        respond_to: oneshot::Sender<SongActorResponse>
+    },
+    Reposition {
+        respond_to: oneshot::Sender<SongActorResponse>
+    },
+    Current {
+        respond_to: oneshot::Sender<SongActorResponse>
     }
 }
+
+pub enum SongActorResponse {
+    CurrentSong(Option<PlayableSong>),
+    Success,
+    Fail
+}
+
+impl SongActor {
+    fn new (
+        receiver: mpsc::Receiver<SongActorMessage>,
+    ) -> Self {
+        SongActor {
+            receiver: receiver,
+            song_deque: VecDeque::new(),
+            current_song: None
+        }
+    }
+
+    async fn handle_message(&mut self, msg: SongActorMessage) {
+        match msg {
+            SongActorMessage::QueueSong { respond_to } => {
+
+                let _ = respond_to.send(SongActorResponse::Success);    
+            },
+            SongActorMessage::RemoveSong { respond_to } => {
+                let _ = respond_to.send(SongActorResponse::Success);
+            },
+            SongActorMessage::PopSong { respond_to } => {
+                let _ = respond_to.send(SongActorResponse::Success);
+            },
+            SongActorMessage::Reposition { respond_to } => {
+                let _ = respond_to.send(SongActorResponse::Success);
+            },
+            SongActorMessage::Current { respond_to } => {
+                let _ = respond_to.send(SongActorResponse::CurrentSong(self.current_song.clone()));
+            }
+        }
+    }
+}
+
