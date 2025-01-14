@@ -8,15 +8,18 @@ struct VideoDlActor {
     ytdlp: Ytdlp,
 }
 
-enum VideoDlActorMessage {
+pub enum VideoDlActorMessage {
     DownloadVideo {
         yt_link: String,
         respond_to: oneshot::Sender<VideoDlActorResponse>
     }
 }
 
-enum VideoDlActorResponse {
-    Success,
+pub enum VideoDlActorResponse {
+    Success {
+        song_name: String,
+        video_file_path: String,
+    },
     Fail
 }
 
@@ -38,7 +41,10 @@ impl VideoDlActor {
 
                 self.ytdlp.fetcher.download_video_from_url(String::from("https://www.youtube.com/watch?v=3bfRnOOmXSc"), "video.mp4");
 
-                let _ = respond_to.send(VideoDlActorResponse::Success);
+                let _ = respond_to.send(VideoDlActorResponse::Success { 
+                    song_name: String::from("test"),
+                    video_file_path: String::from("assets/video.mp4")
+                });
             }
         }
     }
@@ -64,11 +70,11 @@ impl VideoDlActorHandle {
         Self { sender }
     }
 
-    pub async fn download_video(&self, yt_link: String) {
+    pub async fn download_video(&self, yt_link: String) -> VideoDlActorResponse {
         let (send, recv) = oneshot::channel();
         let msg = VideoDlActorMessage::DownloadVideo { yt_link: yt_link, respond_to: send };
 
         let _ = self.sender.send(msg).await;
-        recv.await.expect("Actor task has been killed");
+        recv.await.expect("Actor task has been killed")
     }
 }

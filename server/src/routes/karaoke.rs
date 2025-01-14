@@ -8,67 +8,74 @@
 use std::sync::Arc;
 
 use axum::{
-    body::Body, extract::State, http::{header::{self, ACCEPT_RANGES}, HeaderMap, StatusCode}, response::{IntoResponse, Response}, Json
+    body::Body, debug_handler, extract::State, http::{header::{self, ACCEPT_RANGES}, HeaderMap, StatusCode}, response::{IntoResponse, Response}, Json
 };
 use axum_extra::{headers, TypedHeader};
 use serde::Deserialize;
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
-use crate::actors::request::RequestActorHandle;
+use crate::{actors::request::{RequestActorHandle, RequestActorResponse}, state::AppState, ytdlp::YtdlpError};
 
 #[derive(Deserialize)]
 pub struct QueueSong {
     yt_link: String,
 }
 
-// impl IntoResponse for YtdlpError {
-//     fn into_response(self) -> axum::response::Response {
-//         return axum::response::Response::new("hi".into());
-//     }
-// }
+impl IntoResponse for YtdlpError {
+    fn into_response(self) -> axum::response::Response {
+        return axum::response::Response::new("hi".into());
+    }
+}
 
-// #[debug_handler(state = AppState)]
-// pub async fn queue_song(
-//     State(request_actor_handle): State<Arc<RequestActorHandle>>,
-//     Json(payload): Json<QueueSong>,
-// ) -> Result<impl IntoResponse, YtdlpError> {
-//     println!("helo beanie 1");
+#[debug_handler(state = AppState)]
+pub async fn queue_song(
+    State(request_actor_handle): State<Arc<RequestActorHandle>>,
+    Json(payload): Json<QueueSong>,
+) -> Result<impl IntoResponse, YtdlpError> {
+    println!("helo beanie 1");
 
-//     println!("ytlkink {}", payload.yt_link);
+    println!("ytlkink {}", payload.yt_link);
     
 
-//     println!("{:?}", request_actor_handle.queue_song().await);
-//     // let url = String::from("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
-//     // let _video_path = ytdlp
-//     //     .fetcher
-//     //     .download_video_from_url(url, "my-video.mp4")
-//     //     .await
-//     //     .map_err(|error| {
-//     //         eprintln!("error downloading video: {}", error);
-//     //         YtdlpError::SomethingWentWrong(error.to_string())
-//     //     })?;
+    println!("{:?}", request_actor_handle.queue_song().await);
+    // let url = String::from("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    // let _video_path = ytdlp
+    //     .fetcher
+    //     .download_video_from_url(url, "my-video.mp4")
+    //     .await
+    //     .map_err(|error| {
+    //         eprintln!("error downloading video: {}", error);
+    //         YtdlpError::SomethingWentWrong(error.to_string())
+    //     })?;
 
-//     println!("helo beanie 2");
+    println!("helo beanie 2");
 
-//     Ok((StatusCode::OK, [("x-foo", "bar")], "Hello, World!"))
-// }
+    Ok((StatusCode::OK, [("x-foo", "bar")], "Hello, World!"))
+}
 
-// pub async fn play_next_song(
-//     State(request_actor_handle): State<Arc<RequestActorHandle>>,
-//     Json(payload): Json<QueueSong>
-// ) -> impl IntoResponse {
+pub async fn play_next_song(
+    State(request_actor_handle): State<Arc<RequestActorHandle>>,
+    Json(payload): Json<QueueSong>
+) -> impl IntoResponse {
 
-
-//     (StatusCode::OK, [("x-foo", "bar")], "Hello, World!")
-// }
+    let request_actor_response = request_actor_handle.play_next_song().await;
+    match request_actor_response {
+        RequestActorResponse::PlayNextSuccess { video_file_path } => {   
+            (StatusCode::OK, [("x-foo", "bar")], video_file_path)
+        }
+        _ => {
+            println!("this should not happen xd");
+            (StatusCode::OK, [("x-foo", "bar")], String::from("Hello, World!"))
+        }
+    }
+}
 
 pub async fn here_video(
     State(request_actor_handle): State<Arc<RequestActorHandle>>,
     headers: HeaderMap
 ) -> Result<Response<Body>, StatusCode> {
     // Open the file
-    println!("helo beanie");
 
     let wants_html = headers
         .get(header::ACCEPT)
