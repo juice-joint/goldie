@@ -80,6 +80,7 @@ impl RequestActor {
                     }
                     SongActorResponse::Success => todo!(),
                     SongActorResponse::Fail => todo!(),
+                    _ => todo!(),
                 }
             },
             RequestActorMessage::Remove { respond_to } => todo!(),
@@ -99,6 +100,7 @@ impl RequestActor {
                     }
                     SongActorResponse::Success => todo!(),
                     SongActorResponse::Fail => todo!(),
+                    _ => todo!()
                 }
             },
         }

@@ -5,17 +5,18 @@
 
 // use crate::{actors::request::RequestActorHandle, queue::{ PlayableSong }, state::AppState, ytdlp::{Ytdlp, YtdlpError}};
 
-use std::sync::Arc;
+use std::{convert::Infallible, sync::Arc, time::Duration};
 
 use axum::{
-    body::Body, debug_handler, extract::State, http::{header::{self, ACCEPT_RANGES}, HeaderMap, StatusCode}, response::{IntoResponse, Response}, Json
+    body::Body, debug_handler, extract::State, http::{header::{self, ACCEPT_RANGES}, HeaderMap, StatusCode}, response::{sse::{Event, KeepAlive}, IntoResponse, Response, Sse}, Json
 };
 use axum_extra::{headers, TypedHeader};
+use futures_util::{stream, StreamExt};
 use serde::Deserialize;
-use tokio::fs::File;
+use tokio::{fs::File, sync};
 use tokio_util::io::ReaderStream;
 
-use crate::{actors::request::{RequestActorHandle, RequestActorResponse}, state::AppState, ytdlp::YtdlpError};
+use crate::{actors::request::{RequestActorHandle, RequestActorResponse}, queue::PlayableSong, state::AppState, ytdlp::YtdlpError};
 
 #[derive(Deserialize)]
 pub struct QueueSong {
@@ -69,6 +70,22 @@ pub async fn play_next_song(
             (StatusCode::OK, [("x-foo", "bar")], String::from("Hello, World!"))
         }
     }
+}
+
+pub async fn sse(
+    State(sse_broadcaster): State<Arc<sync::broadcast::Sender<PlayableSong>>>
+) -> Sse<impl stream::Stream<Item = Result<Event, Infallible>>> {
+    let stream = tokio_stream::wrappers::BroadcastStream::new(sse_broadcaster.subscribe())
+        .filter_map(|result| async move {
+            match result {
+                Ok(song_message) => {
+                    Some(Ok(Event::default().data(song_message.name)))
+                },
+                Err(_) => None
+            }
+        });
+
+    Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
 pub async fn here_video(

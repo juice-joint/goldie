@@ -1,6 +1,6 @@
-use std::{collections::VecDeque, usize};
+use std::{collections::VecDeque, sync::Arc, usize};
 
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{self, mpsc, oneshot};
 use uuid::Uuid;
 
 #[derive(Clone, Debug)]
@@ -36,6 +36,7 @@ struct SongActor {
     receiver: mpsc::Receiver<SongActorMessage>,
     song_deque: VecDeque<PlayableSong>,
     current_song: Option<PlayableSong>,
+    sse_broadcaster: Arc<sync::broadcast::Sender<PlayableSong>>
 }
 
 pub enum SongActorMessage {
@@ -73,9 +74,10 @@ pub enum SongActorResponse {
 }
 
 impl SongActor {
-    fn new(receiver: mpsc::Receiver<SongActorMessage>) -> Self {
+    fn new(receiver: mpsc::Receiver<SongActorMessage>, sse_broadcaster: Arc<sync::broadcast::Sender<PlayableSong>>) -> Self {
         SongActor {
             receiver: receiver,
+            sse_broadcaster: sse_broadcaster,
             song_deque: VecDeque::new(),
             current_song: None,
         }
@@ -106,6 +108,9 @@ impl SongActor {
             SongActorMessage::PopSong { respond_to } => {
                 let popped_song = self.song_deque.pop_front().map(|song| {
                     self.current_song = Some(song.clone());
+
+                    let _ = self.sse_broadcaster.send(song.clone());
+
                     song
                 });
 
@@ -145,9 +150,9 @@ pub struct SongActorHandle {
 }
 
 impl SongActorHandle {
-    pub fn new() -> Self {
+    pub fn new(sse_broadcaster: Arc<sync::broadcast::Sender<PlayableSong>>) -> Self {
         let (sender, receiver) = mpsc::channel(8);
-        let song_actor = SongActor::new(receiver);
+        let song_actor = SongActor::new(receiver, sse_broadcaster);
         tokio::spawn(run_song_actor(song_actor));
 
         Self { sender }
