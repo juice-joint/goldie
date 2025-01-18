@@ -1,0 +1,23 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { QUERY_KEYS } from "../queryKeys";
+import axiosClient from "../axios";
+
+async function playNextSong() {
+  const { data } = await axiosClient.post("/play_next", {
+    headers: { "Content-Type": "application/json", Accept: "*" },
+  });
+  return data;
+}
+
+export function usePlayNextSong() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: playNextSong,
+    onSuccess: () => {
+      // invalidate both current song and queue queries to refresh them
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.currentSong });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.songList });
+    },
+  });
+}
