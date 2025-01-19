@@ -1,14 +1,16 @@
-import { useQueryClient, useQuery } from "@tanstack/react-query";
-import { EventType, type SSEEvent } from "./types";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { QUERY_KEYS } from "../queryKeys";
 import { Song } from "../api-types";
+import { useQueue } from "../queries/useQueue";
+import { QUERY_KEYS } from "../queryKeys";
 import { SSE_URL } from "./eventSource";
+import { EventType, type SSEEvent } from "./types";
 
 const sseConnections = new Map<string, EventSource>();
 
 export const useEventSource = () => {
   const queryClient = useQueryClient();
+  const getQueue = useQueue();
 
   const query = useQuery({
     queryKey: ["sse", SSE_URL],
@@ -17,17 +19,16 @@ export const useEventSource = () => {
         if (!sseConnections.has(SSE_URL)) {
           const eventSource = new EventSource(new URL(SSE_URL));
           sseConnections.set(SSE_URL, eventSource);
+          getQueue.refetch();
 
           eventSource.onmessage = (event) => {
             try {
               const data = JSON.parse(event.data) as SSEEvent;
-              console.log(data);
               switch (data.type) {
                 case EventType.CurrentSongUpdated:
-                  queryClient.setQueryData<Song>(
-                    QUERY_KEYS.currentSong,
-                    data.current_song
-                  );
+                  queryClient.setQueryData<Song>(QUERY_KEYS.currentSong, {
+                    ...data.current_song,
+                  });
                   return;
                 case EventType.QueueChangeEvent:
                   queryClient.setQueryData<Song[]>(

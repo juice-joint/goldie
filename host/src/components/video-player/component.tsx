@@ -1,13 +1,12 @@
 import { useRef, useState } from "react";
 import { usePlayNextSong } from "../../api/mutations/usePlayNextSong";
 import queryClient from "../../api/queryClient";
-import { useCurrentSong } from "../../api/sse/hooks";
 import { QUERY_KEYS } from "../../api/queryKeys";
 import { API_URL } from "../../api/sse/eventSource";
+import { useCurrentSong } from "../../api/queries/useCurrentSong";
 
 function VideoPlayer() {
-  const currentSong = useCurrentSong();
-
+  const { data: currentSong } = useCurrentSong();
   const vidRef = useRef<HTMLVideoElement>(null);
   const { mutate: playNextSong } = usePlayNextSong();
   const [progress, setProgress] = useState(0);
@@ -24,6 +23,10 @@ function VideoPlayer() {
       setProgress(progress);
     }
   };
+
+  if (!currentSong?.video_file_path) {
+    return null;
+  }
 
   const videoUrl = `${API_URL}/${currentSong?.video_file_path}`;
 
