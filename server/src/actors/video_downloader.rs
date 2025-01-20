@@ -43,7 +43,7 @@ impl VideoDlActor {
 
                 let _ = respond_to.send(VideoDlActorResponse::Success { 
                     song_name: String::from("test"),
-                    video_file_path: String::from("assets/video.mp4")
+                    video_file_path: format!("assets/{}", yt_link)
                 });
             }
         }

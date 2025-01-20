@@ -4,28 +4,26 @@ mod routes {
     pub mod karaoke;
 }
 mod state;
-mod queue;
 mod ytdlp;
 mod actors {
-    pub mod request;
-    pub mod videodl;
+    pub mod video_downloader;
+    pub mod song_coordinator;
 }
 
 use axum::http::{
     header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
     HeaderValue, Method,
 };
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{Any, CorsLayer};
 
 use crate::router::create_router_with_state;
 
 #[tokio::main]
 async fn main() {
     let cors_layer = CorsLayer::new()
-        .allow_origin("http://localhost:3000".parse::<HeaderValue>().unwrap())
-        .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
-        .allow_credentials(true)
-        .allow_headers([AUTHORIZATION, ACCEPT, CONTENT_TYPE]);
+        .allow_origin(Any) // Allows all origins
+        .allow_methods(Any) // Allows all HTTP methods
+        .allow_headers(Any); // Allows all headers
 
     let app = create_router_with_state().await.unwrap().layer(cors_layer);
 

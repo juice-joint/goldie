@@ -7,9 +7,12 @@ edition = "2021"
 async-channel = "2.3.1"
 axum = { version = "0.8.1", features = ["macros"] }
 axum-extra = { version = "0.10.0", features = ["typed-header"] }
+futures-util = "0.3.31"
+rand = "0.8.5"
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.134"
 tokio = { version = "1.42.0", features = ["fs", "io-std", "io-util", "rt-multi-thread"] }
+tokio-stream = { version = "0.1.17", features = ["full"] }
 tokio-util = { version = "0.7.13", features = ["io"] }
 tower = "0.5.2"
 tower-http = { version = "0.6.2", features = ["cors"] }

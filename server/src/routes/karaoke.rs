@@ -5,18 +5,19 @@
 
 // use crate::{actors::request::RequestActorHandle, queue::{ PlayableSong }, state::AppState, ytdlp::{Ytdlp, YtdlpError}};
 
-use std::{convert::Infallible, sync::Arc, time::Duration};
+use std::{collections::VecDeque, convert::Infallible, sync::Arc, time::Duration};
 
 use axum::{
-    body::Body, debug_handler, extract::State, http::{header::{self, ACCEPT_RANGES}, HeaderMap, StatusCode}, response::{sse::{Event, KeepAlive}, IntoResponse, Response, Sse}, Json
+    body::Body, debug_handler, extract::{Path, State}, http::{header::{self, ACCEPT_RANGES}, HeaderMap, StatusCode}, response::{sse::{Event, KeepAlive}, IntoResponse, Response, Sse}, Json
 };
 use axum_extra::{headers, TypedHeader};
 use futures_util::{stream, StreamExt};
+use rand::{distributions::Alphanumeric, Rng};
 use serde::Deserialize;
 use tokio::{fs::File, sync};
 use tokio_util::io::ReaderStream;
 
-use crate::{actors::request::{RequestActorHandle, RequestActorResponse}, queue::PlayableSong, state::AppState, ytdlp::YtdlpError};
+use crate::{actors::{song_coordinator::{CurrentSongResponse, GetQueueResponse, PlayableSong, PopSongResponse, QueueableSong, SongActorHandle}, video_downloader::{VideoDlActorHandle, VideoDlActorResponse}}, state::AppState, ytdlp::YtdlpError};
 
 #[derive(Deserialize)]
 pub struct QueueSong {
@@ -31,55 +32,112 @@ impl IntoResponse for YtdlpError {
 
 #[debug_handler(state = AppState)]
 pub async fn queue_song(
-    State(request_actor_handle): State<Arc<RequestActorHandle>>,
+    State(song_actor_handle): State<Arc<SongActorHandle>>,
+    State(videodl_actor_handle): State<Arc<VideoDlActorHandle>>,
     Json(payload): Json<QueueSong>,
-) -> Result<impl IntoResponse, YtdlpError> {
+) -> Result<impl IntoResponse, StatusCode> {
     println!("helo beanie 1");
 
     println!("ytlkink {}", payload.yt_link);
     
+    let queueable_song = QueueableSong {
+        name: String::from("helo beanie"),
+        yt_link: payload.yt_link
+    };
 
-    println!("{:?}", request_actor_handle.queue_song().await);
-    // let url = String::from("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
-    // let _video_path = ytdlp
-    //     .fetcher
-    //     .download_video_from_url(url, "my-video.mp4")
-    //     .await
-    //     .map_err(|error| {
-    //         eprintln!("error downloading video: {}", error);
-    //         YtdlpError::SomethingWentWrong(error.to_string())
-    //     })?;
+    let videodl_response = videodl_actor_handle.download_video(queueable_song.yt_link).await;
 
-    println!("helo beanie 2");
-
-    Ok((StatusCode::OK, [("x-foo", "bar")], "Hello, World!"))
-}
-
-pub async fn play_next_song(
-    State(request_actor_handle): State<Arc<RequestActorHandle>>,
-    Json(payload): Json<QueueSong>
-) -> impl IntoResponse {
-
-    let request_actor_response = request_actor_handle.play_next_song().await;
-    match request_actor_response {
-        RequestActorResponse::PlayNextSuccess { video_file_path } => {   
-            (StatusCode::OK, [("x-foo", "bar")], video_file_path)
-        }
-        _ => {
-            println!("this should not happen xd");
-            (StatusCode::OK, [("x-foo", "bar")], String::from("Hello, World!"))
+    //TODO add caching of something
+    match videodl_response {
+        VideoDlActorResponse::Success { song_name, video_file_path } => {
+            let test = rand::thread_rng()
+                .sample_iter(&Alphanumeric)
+                .take(7)
+                .map(char::from)
+                .collect();
+            song_actor_handle.queue_song(PlayableSong::new(test, video_file_path)).await;
+            Ok(StatusCode::OK)
+        },
+        VideoDlActorResponse::Fail => {
+            Err(StatusCode::BAD_GATEWAY)
         }
     }
 }
 
+pub async fn play_next_song(
+    State(song_actor_handle): State<Arc<SongActorHandle>>
+) -> Result<impl IntoResponse, StatusCode> {
+
+    println!("helo beanie 3");
+
+    let song_actor_response = song_actor_handle.pop_song().await;
+    match song_actor_response {
+        PopSongResponse::Success(next_song) => {
+            Ok(StatusCode::OK)
+        },
+        PopSongResponse::Fail => {
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+pub async fn song_list(
+    State(song_actor_handle): State<Arc<SongActorHandle>>,
+) -> Result<impl IntoResponse, StatusCode> {
+
+    let song_actor_response = song_actor_handle.get_queue().await;
+    match song_actor_response {
+        GetQueueResponse::Success(list_of_songs) => {
+            Ok((StatusCode::OK, Json(list_of_songs)))
+        },
+        GetQueueResponse::Fail => {
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+pub async fn current_song(
+    State(song_actor_handle): State<Arc<SongActorHandle>>,
+) -> Result<impl IntoResponse, StatusCode> {
+
+    let song_actor_response = song_actor_handle.current_song().await;
+    match song_actor_response {
+        CurrentSongResponse::Success(current_song ) => {
+            match current_song {
+                Some(current_song) => {
+                    Ok((StatusCode::OK, Json(current_song)))
+                },
+                None => {
+                    Err(StatusCode::NO_CONTENT)
+                }
+            }
+        }
+        CurrentSongResponse::Fail => {
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(tag = "type")]
+pub enum SseEvent {
+    QueueUpdated {
+        queue: VecDeque<PlayableSong>
+    },
+    CurrentSongUpdated {
+        current_song: Option<PlayableSong>
+    }
+}
+
 pub async fn sse(
-    State(sse_broadcaster): State<Arc<sync::broadcast::Sender<PlayableSong>>>
+    State(sse_broadcaster): State<Arc<sync::broadcast::Sender<SseEvent>>>
 ) -> Sse<impl stream::Stream<Item = Result<Event, Infallible>>> {
     let stream = tokio_stream::wrappers::BroadcastStream::new(sse_broadcaster.subscribe())
         .filter_map(|result| async move {
             match result {
-                Ok(song_message) => {
-                    Some(Ok(Event::default().data(song_message.name)))
+                Ok(sse_event) => {
+                    let event_json = serde_json::to_string(&sse_event).ok()?;
+                    Some(Ok(Event::default().data(event_json)))
                 },
                 Err(_) => None
             }
@@ -89,58 +147,11 @@ pub async fn sse(
 }
 
 pub async fn here_video(
-    State(request_actor_handle): State<Arc<RequestActorHandle>>,
-    headers: HeaderMap
+    Path(video): Path<String>
 ) -> Result<Response<Body>, StatusCode> {
     // Open the file
 
-    let wants_html = headers
-        .get(header::ACCEPT)
-        .and_then(|v| v.to_str().ok())
-        .map(|v| v.contains("text/html"))
-        .unwrap_or(false);
-    // If Accept header includes text/html, send the HTML page
-    if wants_html
-    {
-        let html = format!(r#"
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Video Player</title>
-                <style>
-                    body {{ 
-                        background: #1a1a1a;
-                        display: flex;
-                        justify-content: center;
-                        align-items: center;
-                        height: 100vh;
-                        margin: 0;
-                    }}
-                    video {{
-                        max-width: 90%;
-                        box-shadow: 0 0 20px rgba(0,0,0,0.3);
-                    }}
-                </style>
-            </head>
-            <body>
-                <video width="1280" height="720" controls autoplay>
-                    <source src="?raw=true" type="video/mp4">
-                    Your browser does not support the video tag.
-                </source>
-                </video>
-            </body>
-            </html>
-        "#);
-
-        return Ok(Response::builder()
-            .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, "text/html")
-            .body(Body::from(html))
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?);
-    }
-
-
-    let file = File::open("assets/video.mp4")
+    let file = File::open(format!("assets/{}.mp4", video))
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
     

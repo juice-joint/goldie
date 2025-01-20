@@ -3,33 +3,42 @@ use std::sync::Arc;
 use axum::extract::FromRef;
 use tokio::sync;
 
-use crate::{actors::request::RequestActorHandle, queue::PlayableSong};
+use crate::{actors::{song_coordinator::SongActorHandle, video_downloader::VideoDlActorHandle}, routes::karaoke::SseEvent};
 
 #[derive(Clone)]
 pub struct AppState {
-    pub request_actor_handle: Arc<RequestActorHandle>,
-    pub sse_broadcaster: Arc<sync::broadcast::Sender<PlayableSong>>
+    pub song_actor_handle: Arc<SongActorHandle>,
+    pub videodl_actor_handle: Arc<VideoDlActorHandle>,
+    pub sse_broadcaster: Arc<sync::broadcast::Sender<SseEvent>>
 }
 
 impl AppState {
     pub fn new(
-        request_actor_handle: Arc<RequestActorHandle>,
-        sse_broadcaster: Arc<sync::broadcast::Sender<PlayableSong>>
+        song_actor_handle: Arc<SongActorHandle>,
+        videodl_actor_handle: Arc<VideoDlActorHandle>,
+        sse_broadcaster: Arc<sync::broadcast::Sender<SseEvent>>
     ) -> Self {
         AppState {
-            request_actor_handle,
+            song_actor_handle,
+            videodl_actor_handle,
             sse_broadcaster
         }
     }
 }
 
-impl FromRef<AppState> for Arc<RequestActorHandle> {
+impl FromRef<AppState> for Arc<SongActorHandle> {
     fn from_ref(app_state: &AppState) -> Self {
-        app_state.request_actor_handle.clone()
+        app_state.song_actor_handle.clone()
     }
 }
 
-impl FromRef<AppState> for Arc<sync::broadcast::Sender<PlayableSong>> {
+impl FromRef<AppState> for Arc<VideoDlActorHandle> {
+    fn from_ref(app_state: &AppState) -> Self {
+        app_state.videodl_actor_handle.clone()
+    }
+}
+
+impl FromRef<AppState> for Arc<sync::broadcast::Sender<SseEvent>> {
     fn from_ref(app_state: &AppState) -> Self {
         app_state.sse_broadcaster.clone()
     }
