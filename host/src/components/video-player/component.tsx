@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePlayNextSong } from "../../api/mutations/usePlayNextSong";
 import queryClient from "../../api/queryClient";
 import { QUERY_KEYS } from "../../api/queryKeys";
@@ -7,6 +7,12 @@ import { useCurrentSong } from "../../api/queries/useCurrentSong";
 
 function VideoPlayer() {
   const { data: currentSong } = useCurrentSong();
+
+  useEffect(() => {
+    console.log(currentSong, "video");
+    vidRef.current?.load();
+  }, [currentSong]);
+
   const vidRef = useRef<HTMLVideoElement>(null);
   const { mutate: playNextSong } = usePlayNextSong();
   const [progress, setProgress] = useState(0);
@@ -29,6 +35,7 @@ function VideoPlayer() {
   }
 
   const videoUrl = `${API_URL}/${currentSong?.video_file_path}`;
+  console.log(videoUrl);
 
   return (
     <div className="relative w-full h-full bg-gradient-to-br from-purple-900 via-indigo-900 to-blue-900">
@@ -39,7 +46,6 @@ function VideoPlayer() {
         autoPlay
         onEnded={handleEnded}
         onTimeUpdate={handleTimeUpdate}
-        muted
       >
         <source src={videoUrl} type="video/mp4" />
       </video>

@@ -49,7 +49,7 @@ impl VideoDlActor {
                     "--no-simulate",
                     &yt_link
                 ];
-                let output = Command::new(r"C:\Users\jared\.local\bin\yt-dlp.exe")
+                let output = Command::new("yt-dlp")
                     .args(&args)
                     .output();
                 match output {

@@ -24,6 +24,8 @@ export const useEventSource = () => {
           eventSource.onmessage = (event) => {
             try {
               const data = JSON.parse(event.data) as SSEEvent;
+              console.log("event", data);
+
               switch (data.type) {
                 case EventType.CurrentSongUpdated:
                   queryClient.setQueryData<Song>(QUERY_KEYS.currentSong, {

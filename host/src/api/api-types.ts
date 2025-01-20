@@ -3,3 +3,7 @@ export interface Song {
   video_file_path: string;
   uuid: string;
 }
+
+export interface ServerIpResponse {
+  ip: string;
+}
