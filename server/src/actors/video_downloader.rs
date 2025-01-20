@@ -61,11 +61,10 @@ impl VideoDlActor {
                             if let Ok(filename) = String::from_utf8(output.stdout) {
                                 let filename = filename.trim();
                                 if let Some((name, ext)) = filename.rsplit_once(".") {
-                                    let todo_remove = format!("{}", name);
-                                    println!("Download successful! Saved as: {}", todo_remove);
+                                    println!("Download successful! Saved as: {}", name);
                                     let _ = respond_to.send(DownloadVideoResponse::Success { 
-                                        song_name: String::from("test"),
-                                        video_file_path: format!("{}", todo_remove.to_string())
+                                        song_name: String::from(name),
+                                        video_file_path: format!("{}", name)
                                     });
                                 } else {
                                     println!("Failed to parse filename into name and extension.");
