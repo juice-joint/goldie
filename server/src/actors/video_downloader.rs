@@ -41,7 +41,8 @@ impl VideoDlActor {
             } => {
                 let args = [
                     "-f",
-                    "bestvideo[height<=720][vcodec=avc1][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][vcodec=avc1][ext=mp4]/best",
+                    //need h264 for hardware acceleration
+                    "bestvideo[height<=1080][vcodec=avc1][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][vcodec=avc1][ext=mp4]/best",
                     "-o",
                     &format!("{}/%(title)s.%(ext)s", "./assets"),
                     "--merge-output-format",
