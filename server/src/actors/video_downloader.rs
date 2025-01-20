@@ -71,7 +71,8 @@ impl VideoDlActor {
                                 eprintln!("Error: Unable to parse filename from yt-dlp output");
                             }
                         } else {
-                            eprintln!("Error downloading video using yt-dlp")
+                            let stderr = String::from_utf8_lossy(&output.stderr);
+                            eprintln!("Error downloading video using yt-dlp:\n{}", stderr);
                         }
                     }
                     Err(error) => {
