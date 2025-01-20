@@ -58,7 +58,7 @@ impl VideoDlActor {
                             if let Ok(filename) = String::from_utf8(output.stdout) {
                                 let filename = filename.trim();
                                 if let Some((name, ext)) = filename.rsplit_once(".") {
-                                    let todo_remove = format!("{}.f135", name);
+                                    let todo_remove = format!("{}", name);
                                     println!("Download successful! Saved as: {}", todo_remove);
                                     let _ = respond_to.send(DownloadVideoResponse::Success { 
                                         song_name: String::from("test"),
