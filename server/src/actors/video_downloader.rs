@@ -39,51 +39,45 @@ impl VideoDlActor {
                 yt_link,
                 respond_to 
             } => {
-
-                let _ = respond_to.send(DownloadVideoResponse::Success { 
-                    song_name: String::from("test"),
-                    video_file_path: format!("{}", "assets/video")
-                });
-
-                // let args = [
-                //     "-f",
-                //     "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-                //     "-o",
-                //     &format!("{}/%(title)s.%(ext)s", "./assets"),
-                //     "--restrict-filenames",
-                //     "--get-filename",
-                //     "--no-simulate",
-                //     &yt_link
-                // ];
-                // let output = Command::new(r"C:\Users\jared\.local\bin\yt-dlp.exe")
-                //     .args(&args)
-                //     .output();
-                // match output {
-                //     Ok(output) => {
-                //         if output.status.success() {
-                //             if let Ok(filename) = String::from_utf8(output.stdout) {
-                //                 let filename = filename.trim();
-                //                 if let Some((name, ext)) = filename.rsplit_once(".") {
-                //                     let todo_remove = format!("{}", name);
-                //                     println!("Download successful! Saved as: {}", todo_remove);
-                //                     let _ = respond_to.send(DownloadVideoResponse::Success { 
-                //                         song_name: String::from("test"),
-                //                         video_file_path: format!("{}", "video")
-                //                     });
-                //                 } else {
-                //                     println!("Failed to parse filename into name and extension.");
-                //                 }
-                //             } else {
-                //                 eprintln!("Error: Unable to parse filename from yt-dlp output");
-                //             }
-                //         } else {
-                //             eprintln!("Error downloading video using yt-dlp")
-                //         }
-                //     }
-                //     Err(error) => {
-                //         eprintln!("Failed to execute yt-dlp: {}", error);
-                //     }
-                // }
+                let args = [
+                    "-f",
+                    "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                    "-o",
+                    &format!("{}/%(title)s.%(ext)s", "./assets"),
+                    "--restrict-filenames",
+                    "--get-filename",
+                    "--no-simulate",
+                    &yt_link
+                ];
+                let output = Command::new("yt-dlp")
+                    .args(&args)
+                    .output();
+                match output {
+                    Ok(output) => {
+                        if output.status.success() {
+                            if let Ok(filename) = String::from_utf8(output.stdout) {
+                                let filename = filename.trim();
+                                if let Some((name, ext)) = filename.rsplit_once(".") {
+                                    let todo_remove = format!("{}", name);
+                                    println!("Download successful! Saved as: {}", todo_remove);
+                                    let _ = respond_to.send(DownloadVideoResponse::Success { 
+                                        song_name: String::from("test"),
+                                        video_file_path: format!("{}", todo_remove.to_string())
+                                    });
+                                } else {
+                                    println!("Failed to parse filename into name and extension.");
+                                }
+                            } else {
+                                eprintln!("Error: Unable to parse filename from yt-dlp output");
+                            }
+                        } else {
+                            eprintln!("Error downloading video using yt-dlp")
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!("Failed to execute yt-dlp: {}", error);
+                    }
+                }
             }
         }
     }

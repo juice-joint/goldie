@@ -11,7 +11,7 @@ use axum::{
     body::Body, debug_handler, extract::{Path, State}, http::{header::{self, ACCEPT_RANGES}, HeaderMap, StatusCode}, response::{sse::{Event, KeepAlive}, IntoResponse, Response, Sse}, Json
 };
 use axum_extra::{headers, TypedHeader};
-use futures_util::{stream, StreamExt};
+use futures_util::{stream, FutureExt, StreamExt};
 use rand::{distributions::Alphanumeric, Rng};
 use serde::Deserialize;
 use tokio::{fs::File, sync};
@@ -45,29 +45,31 @@ pub async fn queue_song(
         yt_link: payload.yt_link
     };
 
-    let videodl_response = videodl_actor_handle.download_video(queueable_song.yt_link).await;
-    //TODO add caching of something
-    match videodl_response {
-        DownloadVideoResponse::Success { song_name, video_file_path } => {
-            let test = rand::thread_rng()
-                .sample_iter(&Alphanumeric)
-                .take(7)
-                .map(char::from)
-                .collect();
-            let queue_song_response = song_actor_handle.queue_song(PlayableSong::new(test, video_file_path)).await;
-            match queue_song_response {
-                QueueSongResponse::Success => {
-                    Ok(StatusCode::OK)
-                },
-                QueueSongResponse::Fail => {
-                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+    let song_actor_handle_clone = Arc::clone(&song_actor_handle);
+    tokio::spawn(async move {
+        match videodl_actor_handle.download_video(queueable_song.yt_link).await {
+            DownloadVideoResponse::Success { song_name, video_file_path } => {
+                let queue_song_response = song_actor_handle_clone.queue_song(
+                    PlayableSong::new(song_name, video_file_path)
+                ).await;
+
+                match queue_song_response {
+                    QueueSongResponse::Success => {
+                        println!("queued up the song");
+                    }
+                    QueueSongResponse::Fail => {
+                        println!("wasn't able to queue up the song :(");
+                    }
                 }
             }
-        },
-        DownloadVideoResponse::Fail => {
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            DownloadVideoResponse::Fail => {
+                println!("wasn't able to download the video :(");
+            }
         }
-    }
+    });
+
+
+    Ok(StatusCode::ACCEPTED)
 }
 
 pub async fn play_next_song(
@@ -156,8 +158,6 @@ pub async fn here_video(
     Path(video): Path<String>
 ) -> Result<Response<Body>, StatusCode> {
     // Open the file
-
-    println!("fajwiofejaw");
 
     let file = File::open(format!("assets/{}.mp4", video))
         .await
