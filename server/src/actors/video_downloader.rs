@@ -11,14 +11,14 @@ struct VideoDlActor {
 pub enum VideoDlActorMessage {
     DownloadVideo {
         yt_link: String,
-        respond_to: oneshot::Sender<VideoDlActorResponse>
+        respond_to: oneshot::Sender<DownloadVideoResponse>
     }
 }
 
-pub enum VideoDlActorResponse {
+pub enum DownloadVideoResponse {
     Success {
         song_name: String,
-        video_file_path: String,
+        video_file_path: String
     },
     Fail
 }
@@ -41,7 +41,7 @@ impl VideoDlActor {
 
                 self.ytdlp.fetcher.download_video_from_url(String::from("https://www.youtube.com/watch?v=3bfRnOOmXSc"), "video.mp4");
 
-                let _ = respond_to.send(VideoDlActorResponse::Success { 
+                let _ = respond_to.send(DownloadVideoResponse::Success { 
                     song_name: String::from("test"),
                     video_file_path: format!("assets/{}", yt_link)
                 });
@@ -70,7 +70,7 @@ impl VideoDlActorHandle {
         Self { sender }
     }
 
-    pub async fn download_video(&self, yt_link: String) -> VideoDlActorResponse {
+    pub async fn download_video(&self, yt_link: String) -> DownloadVideoResponse {
         let (send, recv) = oneshot::channel();
         let msg = VideoDlActorMessage::DownloadVideo { yt_link: yt_link, respond_to: send };
 

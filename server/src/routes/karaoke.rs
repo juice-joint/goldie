@@ -17,7 +17,7 @@ use serde::Deserialize;
 use tokio::{fs::File, sync};
 use tokio_util::io::ReaderStream;
 
-use crate::{actors::{song_coordinator::{CurrentSongResponse, GetQueueResponse, PlayableSong, PopSongResponse, QueueableSong, SongActorHandle}, video_downloader::{VideoDlActorHandle, VideoDlActorResponse}}, state::AppState, ytdlp::YtdlpError};
+use crate::{actors::{song_coordinator::{CurrentSongResponse, GetQueueResponse, PlayableSong, PopSongResponse, QueueSongResponse, QueueableSong, SongActorHandle}, video_downloader::{DownloadVideoResponse, VideoDlActorHandle, VideoDlActorResponse}}, state::AppState, ytdlp::YtdlpError};
 
 #[derive(Deserialize)]
 pub struct QueueSong {
@@ -49,17 +49,24 @@ pub async fn queue_song(
 
     //TODO add caching of something
     match videodl_response {
-        VideoDlActorResponse::Success { song_name, video_file_path } => {
+        DownloadVideoResponse::Success { song_name, video_file_path } => {
             let test = rand::thread_rng()
                 .sample_iter(&Alphanumeric)
                 .take(7)
                 .map(char::from)
                 .collect();
-            song_actor_handle.queue_song(PlayableSong::new(test, video_file_path)).await;
-            Ok(StatusCode::OK)
+            let queue_song_response = song_actor_handle.queue_song(PlayableSong::new(test, video_file_path)).await;
+            match queue_song_response {
+                QueueSongResponse::Success => {
+                    Ok(StatusCode::OK)
+                },
+                QueueSongResponse::Fail => {
+                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                }
+            }
         },
-        VideoDlActorResponse::Fail => {
-            Err(StatusCode::BAD_GATEWAY)
+        DownloadVideoResponse::Fail => {
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
 }
