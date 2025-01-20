@@ -11,6 +11,7 @@ use tokio::sync;
 use crate::actors::song_coordinator::SongActorHandle;
 use crate::actors::video_downloader::VideoDlActorHandle;
 use crate::routes::karaoke::{current_song, here_video, play_next_song, queue_song, song_list, sse};
+use crate::routes::sys::server_ip;
 use crate::ytdlp::YtdlpError;
 use crate::{routes::healthcheck::healthcheck, state::AppState, ytdlp::Ytdlp};
 
@@ -28,6 +29,7 @@ pub async fn create_router_with_state() -> Result<Router, YtdlpError> {
 
     Ok(Router::new()
             .route("/api/healthcheck", get(healthcheck))
+            .route("/server_ip",get(server_ip))
             .route("/queue_song", post(queue_song))
             .route("/play_next", post(play_next_song))
             .route("/song_list", get(song_list))

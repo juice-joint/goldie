@@ -2,6 +2,7 @@ mod router;
 mod routes {
     pub mod healthcheck;
     pub mod karaoke;
+    pub mod sys;
 }
 mod state;
 mod ytdlp;
