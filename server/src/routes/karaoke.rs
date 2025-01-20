@@ -157,6 +157,8 @@ pub async fn here_video(
 ) -> Result<Response<Body>, StatusCode> {
     // Open the file
 
+    println!("fajwiofejaw");
+
     let file = File::open(format!("assets/{}.mp4", video))
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
