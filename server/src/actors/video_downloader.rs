@@ -41,9 +41,11 @@ impl VideoDlActor {
             } => {
                 let args = [
                     "-f",
-                    "bestvideo[height<=720]+bestaudio/best[height<=720]",
+                    "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best",
                     "-o",
                     &format!("{}/%(title)s.%(ext)s", "./assets"),
+                    "--merge-output-format",
+                    "mp4",
                     "--restrict-filenames",
                     "--get-filename",
                     "--no-simulate",
