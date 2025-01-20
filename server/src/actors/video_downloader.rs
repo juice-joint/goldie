@@ -42,7 +42,7 @@ impl VideoDlActor {
 
                 let _ = respond_to.send(DownloadVideoResponse::Success { 
                     song_name: String::from("test"),
-                    video_file_path: format!("{}", "video")
+                    video_file_path: format!("{}", "assets/video")
                 });
 
                 // let args = [
