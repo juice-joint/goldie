@@ -135,6 +135,7 @@ impl SongActor {
                     println!("sent queue updated");
                     let _ = self.sse_broadcaster.send(SseEvent::QueueUpdated { queue: self.song_deque.clone() });
                 }
+                println!("queue {:?}", self.song_deque);
 
                 let _ = respond_to.send(QueueSongResponse::Success);
             }

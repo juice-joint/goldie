@@ -17,7 +17,7 @@ use serde::Deserialize;
 use tokio::{fs::File, sync};
 use tokio_util::io::ReaderStream;
 
-use crate::{actors::{song_coordinator::{CurrentSongResponse, GetQueueResponse, PlayableSong, PopSongResponse, QueueSongResponse, QueueableSong, SongActorHandle}, video_downloader::{DownloadVideoResponse, VideoDlActorHandle, VideoDlActorResponse}}, state::AppState, ytdlp::YtdlpError};
+use crate::{actors::{song_coordinator::{CurrentSongResponse, GetQueueResponse, PlayableSong, PopSongResponse, QueueSongResponse, QueueableSong, SongActorHandle}, video_downloader::{DownloadVideoResponse, VideoDlActorHandle}}, state::AppState, ytdlp::YtdlpError};
 
 #[derive(Deserialize)]
 pub struct QueueSong {
@@ -46,7 +46,6 @@ pub async fn queue_song(
     };
 
     let videodl_response = videodl_actor_handle.download_video(queueable_song.yt_link).await;
-
     //TODO add caching of something
     match videodl_response {
         DownloadVideoResponse::Success { song_name, video_file_path } => {
