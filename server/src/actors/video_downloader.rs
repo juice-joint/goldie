@@ -41,9 +41,12 @@ impl VideoDlActor {
             } => {
                 let args = [
                     "-f",
-                    "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                    //need h264 for hardware acceleration and need the ^= :)
+                    "bestvideo[height<=720][vcodec^=avc1]+bestaudio",
                     "-o",
                     &format!("{}/%(title)s.%(ext)s", "./assets"),
+                    "--merge-output-format",
+                    "mp4",
                     "--restrict-filenames",
                     "--get-filename",
                     "--no-simulate",
@@ -58,11 +61,10 @@ impl VideoDlActor {
                             if let Ok(filename) = String::from_utf8(output.stdout) {
                                 let filename = filename.trim();
                                 if let Some((name, ext)) = filename.rsplit_once(".") {
-                                    let todo_remove = format!("{}", name);
-                                    println!("Download successful! Saved as: {}", todo_remove);
+                                    println!("Download successful! Saved as: {}", name);
                                     let _ = respond_to.send(DownloadVideoResponse::Success { 
-                                        song_name: String::from("test"),
-                                        video_file_path: format!("{}", todo_remove.to_string())
+                                        song_name: String::from(name),
+                                        video_file_path: format!("{}", name)
                                     });
                                 } else {
                                     println!("Failed to parse filename into name and extension.");
@@ -71,7 +73,8 @@ impl VideoDlActor {
                                 eprintln!("Error: Unable to parse filename from yt-dlp output");
                             }
                         } else {
-                            eprintln!("Error downloading video using yt-dlp")
+                            let stderr = String::from_utf8_lossy(&output.stderr);
+                            eprintln!("Error downloading video using yt-dlp:\n{}", stderr);
                         }
                     }
                     Err(error) => {
