@@ -162,6 +162,12 @@ pub async fn here_video(
     let file = File::open(format!("assets/{}.mp4", video))
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    let video_codec = "copy";
+    let video_bitrate = "5M";
+
+    let audio_codec = "aac";
+
     
     // Create a stream from the file
     let stream = ReaderStream::new(file);
@@ -177,25 +183,3 @@ pub async fn here_video(
 
     Ok(response)
 }
-
-// pub async fn play_song(State(shared_state): State<SharedState>) -> impl IntoResponse {
-//     let mut state = shared_state.lock().await;
-
-//     match state.song_coordinator.pop() {
-//         Some(next_song) => {
-//             state.song_coordinator.set_current(next_song);
-//         },
-//         None => {}
-//     }
-
-//     println!("{:?}", state.song_coordinator.);
-// }
-
-// pub async fn end_song(State(shared_state): State<SharedState>) -> impl IntoResponse {
-//     let state = shared_state.lock().await;
-
-//     let next_song = state.song_coordinator.pop();
-//     state.song_coordinator.set_current(next_song);
-
-//     println!("{:?}", state.song_queue);
-// }
