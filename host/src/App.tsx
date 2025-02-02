@@ -17,8 +17,8 @@ function App() {
     <div className="w-full h-full">
       {!currentSong?.video_file_path && <Splash />}
       {currentSong?.video_file_path && <VideoPlayer />}
-      <QRCodeBanner />
-      <Queue />
+      {/* <QRCodeBanner /> */}
+      {/* <Queue /> */}
     </div>
   );
 }
