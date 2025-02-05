@@ -1,33 +1,19 @@
-// use std::sync::{Arc, Mutex};
-
-// use axum::{debug_handler, extract::{ Json, State }, http::StatusCode, response::{IntoResponse, Result, Response}};
-// use serde::Deserialize;
-
-// use crate::{actors::request::RequestActorHandle, queue::{ PlayableSong }, state::AppState, ytdlp::{Ytdlp, YtdlpError}};
-
-use std::{collections::VecDeque, convert::Infallible, sync::Arc, time::Duration};
+use std::{collections::VecDeque, convert::Infallible, sync::Arc};
 
 use axum::{
-    body::Body, debug_handler, extract::{Path, State}, http::{header::{self, ACCEPT_RANGES}, HeaderMap, StatusCode}, response::{sse::{Event, KeepAlive}, IntoResponse, Response, Sse}, Json
+    body::Body, debug_handler, extract::{Path, State}, http::{header::{self, ACCEPT_RANGES}, StatusCode}, response::{sse::{Event, KeepAlive}, IntoResponse, Response, Sse}, Json
 };
-use axum_extra::{headers, TypedHeader};
-use futures_util::{stream, FutureExt, StreamExt};
-use rand::{distributions::Alphanumeric, Rng};
+use futures_util::{stream, StreamExt};
 use serde::Deserialize;
 use tokio::{fs::File, sync};
 use tokio_util::io::ReaderStream;
 
-use crate::{actors::{song_coordinator::{CurrentSongResponse, GetQueueResponse, PlayableSong, PopSongResponse, QueueSongResponse, QueueableSong, SongActorHandle}, video_downloader::{DownloadVideoResponse, VideoDlActorHandle}}, state::AppState, ytdlp::YtdlpError};
+use crate::{actors::{song_coordinator::{CurrentSongResponse, GetQueueResponse, PopSongResponse, QueueSongResponse, QueuedSongStatus, Song, SongActorHandle, UpdateSongStatusResponse}, video_downloader::{DownloadVideoResponse, VideoDlActorHandle}}, lib::yt_downloader::VideoProcessError, state::AppState};
 
 #[derive(Deserialize)]
 pub struct QueueSong {
+    name: String,
     yt_link: String,
-}
-
-impl IntoResponse for YtdlpError {
-    fn into_response(self) -> axum::response::Response {
-        return axum::response::Response::new("hi".into());
-    }
 }
 
 #[debug_handler(state = AppState)]
@@ -38,36 +24,50 @@ pub async fn queue_song(
 ) -> Result<impl IntoResponse, StatusCode> {
     println!("helo beanie 1");
 
-    println!("ytlkink {}", payload.yt_link);
+    let queueable_song = Song::new(payload.name, payload.yt_link, QueuedSongStatus::InProgress);
     
-    let queueable_song = QueueableSong {
-        name: String::from("helo beanie"),
-        yt_link: payload.yt_link
-    };
+    let song_uuid = queueable_song.uuid.clone();
+    let yt_link = queueable_song.yt_link.clone();
 
-    let song_actor_handle_clone = Arc::clone(&song_actor_handle);
-    tokio::spawn(async move {
-        match videodl_actor_handle.download_video(queueable_song.yt_link).await {
-            DownloadVideoResponse::Success { song_name, video_file_path } => {
-                let queue_song_response = song_actor_handle_clone.queue_song(
-                    PlayableSong::new(song_name, video_file_path)
-                ).await;
+    let queue_song_response = song_actor_handle.queue_song(queueable_song).await;
+    match queue_song_response {
+        QueueSongResponse::Success => {
+            tokio::spawn(async move {
+                match videodl_actor_handle.download_video(yt_link).await {
+                    DownloadVideoResponse::Success { video_file_path } => {
+                        println!("receieved downloaded video file path");
+                        
+                          // First split by the last '/'
+                        // let name = video_file_path.rsplit_once('/')
+                        //     .map(|(_, name)| name.to_string())
+                        //     .ok_or_else(|| "invalid");
+        
+                        let update_song_response = song_actor_handle.update_song_status(
+                            song_uuid, QueuedSongStatus::Success
+                        ).await;
+                        match update_song_response {
+                            UpdateSongStatusResponse::Success => {
+                                println!("updated queued song status!");
+                            }
+                            UpdateSongStatusResponse::Fail => {
+                                println!("wasn't able to update queued song status :(");
+                            }
+                        }
 
-                match queue_song_response {
-                    QueueSongResponse::Success => {
-                        println!("queued up the song");
                     }
-                    QueueSongResponse::Fail => {
-                        println!("wasn't able to queue up the song :(");
+                    DownloadVideoResponse::Fail => {
+                        println!("wasn't able to download the video :(");
                     }
                 }
-            }
-            DownloadVideoResponse::Fail => {
-                println!("wasn't able to download the video :(");
-            }
+            });
         }
-    });
+        QueueSongResponse::Fail => {
+            println!("wasn't able to queue up the song :(");   
+        }
+    }
 
+
+    
 
     Ok(StatusCode::ACCEPTED)
 }
@@ -80,7 +80,7 @@ pub async fn play_next_song(
 
     let song_actor_response = song_actor_handle.pop_song().await;
     match song_actor_response {
-        PopSongResponse::Success(next_song) => {
+        PopSongResponse::Success(_) => {
             Ok(StatusCode::OK)
         },
         PopSongResponse::Fail => {
@@ -130,11 +130,15 @@ pub async fn current_song(
 #[serde(tag = "type")]
 pub enum SseEvent {
     QueueUpdated {
-        queue: VecDeque<PlayableSong>
+        queue: VecDeque<Song>
     },
     CurrentSongUpdated {
-        current_song: Option<PlayableSong>
-    }
+        current_song: Option<Song>
+    },
+    KeyChange {
+        current_key: i8
+    },
+    TogglePlayback
 }
 
 pub async fn sse(
@@ -162,12 +166,6 @@ pub async fn here_video(
     let file = File::open(format!("assets/{}.mp4", video))
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
-
-    let video_codec = "copy";
-    let video_bitrate = "5M";
-
-    let audio_codec = "aac";
-
     
     // Create a stream from the file
     let stream = ReaderStream::new(file);
@@ -183,3 +181,4 @@ pub async fn here_video(
 
     Ok(response)
 }
+

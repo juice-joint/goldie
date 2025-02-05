@@ -6,17 +6,19 @@ use uuid::Uuid;
 use crate::routes::karaoke::SseEvent;
 
 #[derive(Clone, Debug, serde::Serialize)]
-pub struct QueueableSong {
-    pub name: String,
-    pub yt_link: String
+pub enum QueuedSongStatus {
+    InProgress,
+    Failed,
+    Success,
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
-pub struct PlayableSong {
+pub struct Song {
     pub name: String,
-    pub video_file_path: String,
     #[serde(serialize_with = "serialize_uuid")]
     pub uuid: Uuid,
+    pub yt_link: String,
+    pub status: QueuedSongStatus
 }
 
 fn serialize_uuid<S>(uuid: &Uuid, serializer: S) -> Result<S::Ok, S::Error>
@@ -26,23 +28,24 @@ where
     serializer.serialize_str(uuid.to_string().as_str())
 }
 
-impl PlayableSong {
-    pub fn new(name: String, video_file_path: String) -> Self {
-        PlayableSong {
+impl Song {
+    pub fn new(name: String, yt_link: String, status: QueuedSongStatus) -> Self {
+        Song {
             name: name.to_string(),
-            video_file_path: video_file_path.to_string(),
             uuid: Uuid::new_v4(),
+            yt_link: yt_link,
+            status: status
         }
     }
 }
 
-impl ToString for PlayableSong {
+impl ToString for Song {
     fn to_string(&self) -> String {
         self.name.clone()
     }
 }
 
-impl PartialEq for PlayableSong {
+impl PartialEq for Song {
     fn eq(&self, other: &Self) -> bool {
         self.uuid == other.uuid
     }
@@ -50,14 +53,15 @@ impl PartialEq for PlayableSong {
 
 struct SongActor {
     receiver: mpsc::Receiver<SongActorMessage>,
-    song_deque: VecDeque<PlayableSong>,
-    current_song: Option<PlayableSong>,
-    sse_broadcaster: Arc<sync::broadcast::Sender<SseEvent>>
+    song_deque: VecDeque<Song>,
+    current_song: Option<Song>,
+    current_key: i8,
+    sse_broadcaster: Arc<sync::broadcast::Sender<SseEvent>>,
 }
 
 pub enum SongActorMessage {
     QueueSong {
-        playable_song: PlayableSong,
+        song: Song,
         respond_to: oneshot::Sender<QueueSongResponse>,
     },
     RemoveSong {
@@ -76,66 +80,91 @@ pub enum SongActorMessage {
         respond_to: oneshot::Sender<CurrentSongResponse>,
     },
     GetQueue {
-        respond_to: oneshot::Sender<GetQueueResponse>
+        respond_to: oneshot::Sender<GetQueueResponse>,
+    },
+    KeyUp {
+        respond_to: oneshot::Sender<KeyUpResponse>,
+    },
+    KeyDown {
+        respond_to: oneshot::Sender<KeyDownResponse>,
+    },
+    UpdateSongStatus {
+        song_uuid: Uuid,
+        status: QueuedSongStatus,
+        respond_to: oneshot::Sender<UpdateSongStatusResponse>
     }
 }
 
 pub enum QueueSongResponse {
     Success,
-    Fail
+    Fail,
 }
 
 pub enum RemoveSongResponse {
     Success,
-    Fail
+    Fail,
 }
 
 pub enum PopSongResponse {
-    Success(Option<PlayableSong>),
-    Fail
+    Success(Option<Song>),
+    Fail,
 }
 
 pub enum RepositionSongResponse {
     Success,
-    Fail
+    Fail,
 }
 
 pub enum CurrentSongResponse {
-    Success(Option<PlayableSong>),
-    Fail
+    Success(Option<Song>),
+    Fail,
 }
 
 pub enum GetQueueResponse {
-    Success(VecDeque<PlayableSong>),
+    Success(VecDeque<Song>),
+    Fail,
+}
+
+pub enum KeyUpResponse {
+    Success(i8),
+    Fail,
+}
+
+pub enum KeyDownResponse {
+    Success(i8),
+    Fail,
+}
+
+pub enum UpdateSongStatusResponse {
+    Success,
     Fail
 }
 
 impl SongActor {
-    fn new(receiver: mpsc::Receiver<SongActorMessage>, sse_broadcaster: Arc<sync::broadcast::Sender<SseEvent>>) -> Self {
+    fn new(
+        receiver: mpsc::Receiver<SongActorMessage>,
+        sse_broadcaster: Arc<sync::broadcast::Sender<SseEvent>>,
+    ) -> Self {
         SongActor {
             receiver: receiver,
             sse_broadcaster: sse_broadcaster,
             song_deque: VecDeque::new(),
             current_song: None,
+            current_key: 0,
         }
     }
 
     async fn handle_message(&mut self, msg: SongActorMessage) {
         match msg {
             SongActorMessage::QueueSong {
-                playable_song,
+                song,
                 respond_to,
             } => {
-                if self.song_deque.len() == 0 && self.current_song.is_none() {
-                    self.current_song = Some(playable_song.clone());
-                    println!("sent current song updated");
-                    let _ = self.sse_broadcaster.send(SseEvent::CurrentSongUpdated { current_song: Some(playable_song.clone()) });
-                } else {
-                    self.song_deque.push_back(playable_song);
-                    println!("sent queue updated");
-                    let _ = self.sse_broadcaster.send(SseEvent::QueueUpdated { queue: self.song_deque.clone() });
-                }
-                println!("queue {:?}", self.song_deque);
+                self.song_deque.push_back(song);
+
+                let _ = self.sse_broadcaster.send(SseEvent::QueueUpdated {
+                    queue: self.song_deque.clone(),
+                });
 
                 let _ = respond_to.send(QueueSongResponse::Success);
             }
@@ -153,8 +182,12 @@ impl SongActor {
                 let popped_song = self.song_deque.pop_front();
 
                 self.current_song = popped_song.clone();
-                let _ = self.sse_broadcaster.send(SseEvent::CurrentSongUpdated { current_song: popped_song.clone() });
-                let _ = self.sse_broadcaster.send(SseEvent::QueueUpdated { queue: self.song_deque.clone() });
+                let _ = self.sse_broadcaster.send(SseEvent::CurrentSongUpdated {
+                    current_song: popped_song.clone(),
+                });
+                let _ = self.sse_broadcaster.send(SseEvent::QueueUpdated {
+                    queue: self.song_deque.clone(),
+                });
                 let _ = respond_to.send(PopSongResponse::Success(popped_song));
             }
             SongActorMessage::Reposition {
@@ -168,16 +201,57 @@ impl SongActor {
                     let song = self.song_deque.remove(current_index).unwrap();
                     let new_position = position.min(self.song_deque.len());
                     self.song_deque.insert(new_position, song);
-                    let _ = self.sse_broadcaster.send(SseEvent::QueueUpdated { queue: self.song_deque.clone() });
+                    let _ = self.sse_broadcaster.send(SseEvent::QueueUpdated {
+                        queue: self.song_deque.clone(),
+                    });
                 }
 
                 let _ = respond_to.send(RepositionSongResponse::Success);
             }
             SongActorMessage::Current { respond_to } => {
                 let _ = respond_to.send(CurrentSongResponse::Success(self.current_song.clone()));
-            },
+            }
             SongActorMessage::GetQueue { respond_to } => {
                 let _ = respond_to.send(GetQueueResponse::Success(self.song_deque.clone()));
+            }
+            SongActorMessage::KeyUp { respond_to } => {
+                if self.current_key >= 3 {
+                    // TODO fix this and grab it from some settings descriptor
+                    let _ = respond_to.send(KeyUpResponse::Fail);
+                } else {
+                    self.current_key += 1;
+                    let _ = self.sse_broadcaster.send(SseEvent::KeyChange {
+                        current_key: self.current_key,
+                    });
+
+                    let _ = respond_to.send(KeyUpResponse::Success(self.current_key));
+                }
+            }
+            SongActorMessage::KeyDown { respond_to } => {
+                if self.current_key <= -3 {
+                    // TODO fix this and grab it from some settings descriptor
+                    let _ = respond_to.send(KeyDownResponse::Fail);
+                } else {
+                    self.current_key -= 1;
+                    let _ = self.sse_broadcaster.send(SseEvent::KeyChange {
+                        current_key: self.current_key,
+                    });
+
+                    let _ = respond_to.send(KeyDownResponse::Success(self.current_key));
+                }
+            },
+            SongActorMessage::UpdateSongStatus { song_uuid, status, respond_to } => {
+                if let Some(song) = self.song_deque.iter_mut().find(|song| song.uuid == song_uuid) {
+                    song.status = status;
+     
+                    let _ = self.sse_broadcaster.send(SseEvent::QueueUpdated {
+                        queue: self.song_deque.clone(),
+                    });
+
+                    let _ = respond_to.send(UpdateSongStatusResponse::Success);
+                } else {
+                    let _ = respond_to.send(UpdateSongStatusResponse::Fail);
+                }
             }
         }
     }
@@ -203,10 +277,22 @@ impl SongActorHandle {
         Self { sender }
     }
 
-    pub async fn queue_song(&self, playable_song: PlayableSong) -> QueueSongResponse {
+    pub async fn queue_song(&self, song: Song) -> QueueSongResponse {
         let (send, recv) = oneshot::channel();
         let msg = SongActorMessage::QueueSong {
-            playable_song: playable_song,
+            song: song,
+            respond_to: send,
+        };
+
+        let _ = self.sender.send(msg).await;
+        recv.await.expect("Actor task has been killed")
+    }
+
+    pub async fn update_song_status(&self, song_uuid: Uuid, new_status: QueuedSongStatus) -> UpdateSongStatusResponse {
+        let (send, recv) = oneshot::channel();
+        let msg = SongActorMessage::UpdateSongStatus {
+            song_uuid: song_uuid,
+            status: new_status,
             respond_to: send,
         };
 
@@ -233,7 +319,11 @@ impl SongActorHandle {
         recv.await.expect("Actor task has been killed")
     }
 
-    pub async fn reposition_song(&self, song_uuid: Uuid, position: usize) -> RepositionSongResponse {
+    pub async fn reposition_song(
+        &self,
+        song_uuid: Uuid,
+        position: usize,
+    ) -> RepositionSongResponse {
         let (send, recv) = oneshot::channel();
         let msg = SongActorMessage::Reposition {
             song_uuid: song_uuid,
@@ -252,10 +342,26 @@ impl SongActorHandle {
         let _ = self.sender.send(msg).await;
         recv.await.expect("Actor task has been killed")
     }
-    
+
     pub async fn get_queue(&self) -> GetQueueResponse {
         let (send, recv) = oneshot::channel();
         let msg = SongActorMessage::GetQueue { respond_to: send };
+
+        let _ = self.sender.send(msg).await;
+        recv.await.expect("Actor task has been killed")
+    }
+
+    pub async fn key_up(&self) -> KeyUpResponse {
+        let (send, recv) = oneshot::channel();
+        let msg = SongActorMessage::KeyUp { respond_to: send };
+
+        let _ = self.sender.send(msg).await;
+        recv.await.expect("Actor task has been killed")
+    }
+
+    pub async fn key_down(&self) -> KeyDownResponse {
+        let (send, recv) = oneshot::channel();
+        let msg = SongActorMessage::KeyDown { respond_to: send };
 
         let _ = self.sender.send(msg).await;
         recv.await.expect("Actor task has been killed")
