@@ -1,7 +1,10 @@
 export interface Song {
   name: string;
-  video_file_path: string;
   uuid: string;
+}
+
+export interface FormattedSong extends Song {
+  formattedName: string;
 }
 
 export interface ServerIpResponse {

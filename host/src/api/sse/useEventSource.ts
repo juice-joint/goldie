@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { formatSong } from "../../utils/format";
 import { Song } from "../api-types";
 import { useQueue } from "../queries/useQueue";
 import { QUERY_KEYS } from "../queryKeys";
@@ -28,15 +29,28 @@ export const useEventSource = () => {
 
               switch (data.type) {
                 case EventType.CurrentSongUpdated:
-                  queryClient.setQueryData<Song>(QUERY_KEYS.currentSong, {
-                    ...data.current_song,
-                  });
+                  queryClient.setQueryData<Song>(
+                    QUERY_KEYS.currentSong,
+                    formatSong(data.current_song)
+                  );
                   return;
                 case EventType.QueueChangeEvent:
                   queryClient.setQueryData<Song[]>(
                     QUERY_KEYS.queue,
-                    data.queue
+                    data.queue.map(formatSong)
                   );
+                  break;
+                case EventType.KeyChange:
+                  queryClient.setQueryData<number>(
+                    QUERY_KEYS.key,
+                    data.current_key
+                  );
+                  break;
+                case EventType.TogglePlayback:
+                  const oldQueryData = queryClient.getQueryData<boolean>(
+                    QUERY_KEYS.playback
+                  );
+                  queryClient.setQueryData(QUERY_KEYS.playback, !oldQueryData);
                   break;
                 default:
                   console.log("invalid event type", data);
