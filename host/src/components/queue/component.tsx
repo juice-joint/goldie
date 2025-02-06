@@ -16,7 +16,7 @@ export const Queue = () => {
               <div className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
             </div>
             <p className="text-purple-900 text-xs font-medium truncate">
-              {currentSong?.name}
+              {currentSong?.formattedName}
             </p>
           </div>
         </div>
@@ -35,7 +35,9 @@ export const Queue = () => {
             >
               <div className="flex items-center gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-gray-900 text-sm truncate">{song.name}</p>
+                  <p className="text-gray-900 text-sm truncate">
+                    {song.formattedName}
+                  </p>
                 </div>
               </div>
             </div>
