@@ -42,10 +42,7 @@ pub async fn queue_song(
                         //     .map(|(_, name)| name.to_string())
                         //     .ok_or_else(|| "invalid");
         
-                        let update_song_response = song_actor_handle.update_song_status(
-                            song_uuid, QueuedSongStatus::Success
-                        ).await;
-                        match update_song_response {
+                        match song_actor_handle.update_song_status(song_uuid, QueuedSongStatus::Success).await {
                             UpdateSongStatusResponse::Success => {
                                 println!("updated queued song status!");
                             }
@@ -53,7 +50,6 @@ pub async fn queue_song(
                                 println!("wasn't able to update queued song status :(");
                             }
                         }
-
                     }
                     DownloadVideoResponse::Fail => {
                         println!("wasn't able to download the video :(");
