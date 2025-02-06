@@ -1,18 +1,33 @@
-import { Song } from "../api-types";
+import { FormattedSong } from "../api-types";
 
 export enum EventType {
   QueueChangeEvent = "QueueUpdated",
   CurrentSongUpdated = "CurrentSongUpdated",
+  KeyChange = "KeyChange",
+  TogglePlayback = "TogglePlayback",
 }
 
 export type QueueUpdatedEvent = {
-  type: "QueueUpdated";
-  queue: Song[];
+  type: EventType.QueueChangeEvent;
+  queue: FormattedSong[];
 };
 
 export type CurrentSongChangeEvent = {
-  type: "CurrentSongUpdated";
-  current_song: Song;
+  type: EventType.CurrentSongUpdated;
+  current_song: FormattedSong;
 };
 
-export type SSEEvent = QueueUpdatedEvent | CurrentSongChangeEvent;
+export type KeyChangeEvent = {
+  type: EventType.KeyChange;
+  current_key: number;
+};
+
+export type TogglePlaybackEvent = {
+  type: EventType.TogglePlayback;
+};
+
+export type SSEEvent =
+  | QueueUpdatedEvent
+  | CurrentSongChangeEvent
+  | TogglePlaybackEvent
+  | KeyChangeEvent;

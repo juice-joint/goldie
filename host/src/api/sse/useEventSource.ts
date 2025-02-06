@@ -1,11 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { formatSong } from "../../utils/format";
 import { Song } from "../api-types";
 import { useQueue } from "../queries/useQueue";
 import { QUERY_KEYS } from "../queryKeys";
 import { SSE_URL } from "./eventSource";
 import { EventType, type SSEEvent } from "./types";
-import { formatSong } from "../../utils/format";
 
 const sseConnections = new Map<string, EventSource>();
 
@@ -39,6 +39,18 @@ export const useEventSource = () => {
                     QUERY_KEYS.queue,
                     data.queue.map(formatSong)
                   );
+                  break;
+                case EventType.KeyChange:
+                  queryClient.setQueryData<number>(
+                    QUERY_KEYS.key,
+                    data.current_key
+                  );
+                  break;
+                case EventType.TogglePlayback:
+                  const oldQueryData = queryClient.getQueryData<boolean>(
+                    QUERY_KEYS.playback
+                  );
+                  queryClient.setQueryData(QUERY_KEYS.playback, !oldQueryData);
                   break;
                 default:
                   console.log("invalid event type", data);

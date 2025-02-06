@@ -15,10 +15,10 @@ function App() {
 
   return (
     <div className="w-full h-full">
-      {!currentSong?.video_file_path && <Splash />}
-      {currentSong?.video_file_path && <VideoPlayer />}
-      {/* <QRCodeBanner /> */}
-      {/* <Queue /> */}
+      {!currentSong?.name && <Splash />}
+      {currentSong?.name && <VideoPlayer />}
+      <QRCodeBanner />
+      <Queue />
     </div>
   );
 }
