@@ -120,8 +120,8 @@ impl DashPitchShifter {
             .arg("4")
             .arg(&self.output_file);
 
-        // println!("Executing FFmpeg command:");
-        // println!("{:?}", command);
+        println!("Executing FFmpeg command:");
+        println!("{:?}", command);
 
         let output = command.output()?;
 

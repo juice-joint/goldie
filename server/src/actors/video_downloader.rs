@@ -3,7 +3,6 @@ use std::{
     sync::Arc,
 };
 
-use futures_util::lock::Mutex;
 use tokio::sync::oneshot;
 use uuid::{uuid, Uuid};
 
@@ -12,14 +11,10 @@ use crate::lib::{
     yt_downloader::{VideoProcessError, YtDownloader},
 };
 
-struct VideoDlActor {
-    receiver: async_channel::Receiver<VideoDlActorMessage>,
-    downloader: YtDownloader,
-}
-
 pub enum VideoDlActorMessage {
     DownloadVideo {
         yt_link: String,
+        file_path: String,
         respond_to: oneshot::Sender<DownloadVideoResponse>,
     },
 }
@@ -29,10 +24,15 @@ pub enum DownloadVideoResponse {
     Fail,
 }
 
+struct VideoDlActor {
+    receiver: async_channel::Receiver<VideoDlActorMessage>,
+    downloader: Arc<YtDownloader>,
+}
+
 impl VideoDlActor {
     fn new(
         receiver: async_channel::Receiver<VideoDlActorMessage>,
-        video_downloader: YtDownloader,
+        video_downloader: Arc<YtDownloader>,
     ) -> Self {
         VideoDlActor {
             receiver: receiver,
@@ -46,9 +46,10 @@ impl VideoDlActor {
         match msg {
             VideoDlActorMessage::DownloadVideo {
                 yt_link,
+                file_path,
                 respond_to,
             } => {
-                let result = self.process_video(yt_link).await;
+                let result = self.process_video(yt_link, file_path).await;
                 let response = match result {
                     Ok(video_file_path) => DownloadVideoResponse::Success {
                         video_file_path: video_file_path,
@@ -63,14 +64,14 @@ impl VideoDlActor {
         }
     }
 
-    async fn process_video(&self, yt_link: String) -> Result<String, VideoProcessError> {
+    async fn process_video(&self, yt_link: String, file_path: String) -> Result<String, VideoProcessError> {
         // Download the video
-        let (video_file_path, ext) = self.downloader.download(&yt_link).await?;
+        let (video_file_path, extension) = self.downloader.download(&yt_link, &file_path).await?;
         println!("Download successful! Saved as: {}", video_file_path);
 
         // Process with pitch shifting
         let shifter = DashPitchShifter::new(
-            &format!("{}.{}", video_file_path, ext),
+            &format!("{}.{}", video_file_path, extension),
             &format!("{}.mpd", video_file_path),
             -3..=3,
         );
@@ -79,7 +80,7 @@ impl VideoDlActor {
             VideoProcessError::PitchShiftError(format!("Pitch shift failed: {}", e))
         })?;
 
-        Ok(video_file_path)
+        Ok(format!("{}.{}", video_file_path, extension))
     }
 }
 
@@ -95,7 +96,7 @@ pub struct VideoDlActorHandle {
 }
 
 impl VideoDlActorHandle {
-    pub fn new(yt_downloader: YtDownloader) -> Self {
+    pub fn new(yt_downloader: Arc<YtDownloader>) -> Self {
         let (sender, receiver) = async_channel::bounded(5);
 
         const NUM_CONSUMERS: u8 = 3;
@@ -107,10 +108,11 @@ impl VideoDlActorHandle {
         Self { sender }
     }
 
-    pub async fn download_video(&self, yt_link: String) -> DownloadVideoResponse {
+    pub async fn download_video(&self, yt_link: String, file_path: String) -> DownloadVideoResponse {
         let (send, recv) = oneshot::channel();
         let msg = VideoDlActorMessage::DownloadVideo {
             yt_link: yt_link,
+            file_path: file_path,
             respond_to: send,
         };
 

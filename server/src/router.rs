@@ -24,13 +24,13 @@ use crate::{routes::healthcheck::healthcheck, state::AppState};
 
 pub async fn create_router_with_state() -> Router {
     let storage_dir = storage_dir("pi-tchperfect");
-    let yt_downloader = YtDownloader::new(String::from("./assets"));
+    let base_dir = "./assets";
+    let yt_downloader = Arc::new(YtDownloader::new(String::from(base_dir)));
 
     let (sse_broadcaster, _) = sync::broadcast::channel(10);
     let sse_broadcaster = Arc::new(sse_broadcaster);
 
     let song_actor_handle = Arc::new(SongActorHandle::new(sse_broadcaster.clone()));
-
     let videodl_actor = Arc::new(VideoDlActorHandle::new(yt_downloader));
 
     let app_state = AppState::new(song_actor_handle, videodl_actor, sse_broadcaster.clone());

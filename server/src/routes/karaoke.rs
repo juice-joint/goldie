@@ -8,7 +8,7 @@ use serde::Deserialize;
 use tokio::{fs::File, sync};
 use tokio_util::io::ReaderStream;
 
-use crate::{actors::{song_coordinator::{CurrentSongResponse, GetQueueResponse, PopSongResponse, QueueSongResponse, QueuedSongStatus, Song, SongActorHandle, UpdateSongStatusResponse}, video_downloader::{DownloadVideoResponse, VideoDlActorHandle}}, lib::yt_downloader::VideoProcessError, state::AppState};
+use crate::{actors::{song_coordinator::{self, CurrentSongResponse, GetQueueResponse, InitializeResponse, PopSongResponse, QueueSongResponse, QueuedSongStatus, Song, SongActorHandle, UpdateSongStatusResponse}, video_downloader::{DownloadVideoResponse, VideoDlActorHandle}}, lib::yt_downloader::VideoProcessError, state::AppState};
 
 #[derive(Deserialize)]
 pub struct QueueSong {
@@ -26,14 +26,15 @@ pub async fn queue_song(
 
     let queueable_song = Song::new(payload.name, payload.yt_link, QueuedSongStatus::InProgress);
     
+    // TODO fix this to use references
+    let song_name = queueable_song.name.clone();
     let song_uuid = queueable_song.uuid.clone();
     let yt_link = queueable_song.yt_link.clone();
 
-    let queue_song_response = song_actor_handle.queue_song(queueable_song).await;
-    match queue_song_response {
+    match song_actor_handle.queue_song(queueable_song).await {
         QueueSongResponse::Success => {
             tokio::spawn(async move {
-                match videodl_actor_handle.download_video(yt_link).await {
+                match videodl_actor_handle.download_video(yt_link, format!("{}", song_name)).await {
                     DownloadVideoResponse::Success { video_file_path } => {
                         println!("receieved downloaded video file path");
                         
@@ -45,14 +46,53 @@ pub async fn queue_song(
                         match song_actor_handle.update_song_status(song_uuid, QueuedSongStatus::Success).await {
                             UpdateSongStatusResponse::Success => {
                                 println!("updated queued song status!");
+
+                                match song_actor_handle.initialize(song_uuid.clone()).await {
+                                    InitializeResponse::Success => {
+                                        println!("updated current song initializaton");
+                                    },
+                                    InitializeResponse::Fail => {
+                                        println!("could not update current song initialization");
+                                    }
+                                }
+                                // match song_actor_handle.current_song().await {
+                                //     CurrentSongResponse::Success(current_song) => {
+                                //         if current_song.is_none() {
+                                //             match song_actor_handle.pop_song().await {
+                                //                 PopSongResponse::Success(_) => {
+                                //                     println!("nice");
+                                //                 }
+                                //                 PopSongResponse::Fail => {
+                                //                     println!("setting initial curr song failed");
+                                //                 }
+                                //             }
+                                //         }
+                                //     }
+                                //     CurrentSongResponse::Fail => {
+                                //         println!("couldnt get current song");
+                                //     }
+                                // }
+                            }
+                            UpdateSongStatusResponse::Fail => {
+                                println!("wasn't able to update queued song status :(");
+                                // TODO deal with failed, should pop songs until success
+                            }
+                        }
+
+                        std::fs::remove_file(&video_file_path).expect(&format!("unable to delete file {}", &video_file_path));
+                    }
+                    DownloadVideoResponse::Fail => {
+                        println!("wasn't able to download the video :(");
+
+                        match song_actor_handle.update_song_status(song_uuid, QueuedSongStatus::Failed).await {
+                            UpdateSongStatusResponse::Success => {
+                                println!("updated queued song status!");
                             }
                             UpdateSongStatusResponse::Fail => {
                                 println!("wasn't able to update queued song status :(");
                             }
                         }
-                    }
-                    DownloadVideoResponse::Fail => {
-                        println!("wasn't able to download the video :(");
+
                     }
                 }
             });
