@@ -1,13 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { usePlayNextSong } from "../../api/mutations/usePlayNextSong";
-import queryClient from "../../api/queryClient";
-import { QUERY_KEYS } from "../../api/queryKeys";
-import { API_URL } from "../../api/sse/eventSource";
-import { useCurrentSong } from "../../api/queries/useCurrentSong";
 import dashjs from "dashjs";
-import { usePlayback } from "../../api/queries/usePlayback";
-import { useKey } from "../../api/queries/useKey";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Status } from "../../api/api-types";
+import { usePlayNextSong } from "../../api/mutations/usePlayNextSong";
+import { useCurrentSong } from "../../api/queries/useCurrentSong";
+import { useKey } from "../../api/queries/useKey";
+import { usePlayback } from "../../api/queries/usePlayback";
+import { API_URL } from "../../api/sse/eventSource";
 
 function VideoPlayer() {
   const currentSong = useCurrentSong();
@@ -17,9 +15,9 @@ function VideoPlayer() {
   const [progress, setProgress] = useState(0);
   const playbackState = usePlayback();
   const key = useKey();
+  const [countdown, setCountdown] = useState(5);
 
   const handleEnded = useCallback(() => {
-    queryClient.setQueryData(QUERY_KEYS.currentSong, null);
     playNextSong();
   }, [playNextSong]);
 
@@ -76,7 +74,6 @@ function VideoPlayer() {
       // initialize dash.js player
       const player = dashjs.MediaPlayer().create();
       playerRef.current = player;
-      console.log(currentSong.name);
       // TODO: the first segment is the lowest key.
       player.initialize(
         vidRef.current,
@@ -132,11 +129,27 @@ function VideoPlayer() {
     }
   };
 
+  useEffect(() => {
+    if (currentSong?.status === Status.Failed) {
+      setCountdown(10);
+      const timer = setTimeout(() => {
+        playNextSong();
+      }, 10000);
+
+      const countdownInterval = setInterval(() => {
+        setCountdown((prev) => Math.max(0, prev - 1));
+      }, 1000);
+
+      return () => {
+        clearTimeout(timer);
+        clearInterval(countdownInterval);
+      };
+    }
+  }, [currentSong, playNextSong]);
+
   if (!currentSong?.name) {
     return null;
   }
-
-  console.log(currentSong);
 
   return (
     <div className="relative w-full h-full bg-gradient-to-br from-purple-900 via-indigo-900 to-blue-900">
@@ -146,6 +159,21 @@ function VideoPlayer() {
           <div className="mt-4 text-center">
             <p className="text-white text-lg font-medium mt-1">
               downloading {currentSong.formattedName}...
+            </p>
+          </div>
+        </div>
+      )}
+      {currentSong.status === Status.Failed && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center  backdrop-blur-md">
+          <div className="text-center p-8 bg-gray-900/80 rounded-xl border border-red-500/20 shadow-xl">
+            <h3 className="text-2xl font-bold text-white mb-3">
+              Download Failed
+            </h3>
+            <p className="text-gray-300 text-lg mb-2">
+              Unable to download {currentSong.formattedName}
+            </p>
+            <p className="text-red-400 text-sm">
+              Skipping to next song in {countdown} seconds...
             </p>
           </div>
         </div>

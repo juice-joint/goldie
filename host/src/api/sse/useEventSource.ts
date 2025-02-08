@@ -28,12 +28,6 @@ export const useEventSource = () => {
               console.log("event", data);
 
               switch (data.type) {
-                case EventType.CurrentSongUpdated:
-                  queryClient.setQueryData<Song>(
-                    QUERY_KEYS.currentSong,
-                    formatSong(data.current_song)
-                  );
-                  return;
                 case EventType.QueueChangeEvent:
                   queryClient.setQueryData<Song[]>(
                     QUERY_KEYS.queue,
