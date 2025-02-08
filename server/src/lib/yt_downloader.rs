@@ -51,7 +51,7 @@ impl YtDownloader {
         let output = Command::new("yt-dlp")
             .args(&args)
             .output()
-            .map_err(|e| VideoProcessError::CommandError(e))?;
+            .map_err(VideoProcessError::CommandError)?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);

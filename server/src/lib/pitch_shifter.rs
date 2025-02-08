@@ -2,22 +2,16 @@ use std::process::Command;
 
 #[derive(Debug)]
 pub struct PitchShift {
-    pub semitones: i32,
     pub rate_multiplier: f64,
-    pub tempo_multiplier: f64,
 }
 
 impl PitchShift {
     fn new(semitones: i32) -> Self {
         // Calculate rate multiplier using 2^(n/12) formula
         let rate_multiplier = 2f64.powf(semitones as f64 / 12.0);
-        // Tempo multiplier is the inverse to maintain duration
-        let tempo_multiplier = 1.0 / rate_multiplier;
 
         PitchShift {
-            semitones,
             rate_multiplier,
-            tempo_multiplier,
         }
     }
 }
@@ -69,7 +63,7 @@ impl DashPitchShifter {
     fn build_adaptation_sets(&self) -> String {
         let mut adaptation_sets = String::from("id=0,streams=0 ");
 
-        for (i, shift) in self.shifts.iter().enumerate() {
+        for (i, _shift) in self.shifts.iter().enumerate() {
             adaptation_sets.push_str(&format!("id={},streams={} ", i + 1, i + 1,));
         }
 

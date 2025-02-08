@@ -1,4 +1,6 @@
+use core::error;
 use std::{collections::VecDeque, sync::Arc, usize};
+use thiserror::Error;
 
 use tokio::sync::{self, mpsc, oneshot};
 use uuid::Uuid;
@@ -33,8 +35,8 @@ impl Song {
         Song {
             name: name.to_string(),
             uuid: Uuid::new_v4(),
-            yt_link: yt_link,
-            status: status,
+            yt_link,
+            status,
         }
     }
 }
@@ -61,91 +63,70 @@ struct SongActor {
 pub enum SongActorMessage {
     QueueSong {
         song: Song,
-        respond_to: oneshot::Sender<QueueSongResponse>,
+        respond_to: oneshot::Sender<Result<(), SongCoordinatorError>>,
     },
     RemoveSong {
         song_uuid: Uuid,
-        respond_to: oneshot::Sender<RemoveSongResponse>,
+        respond_to: oneshot::Sender<Result<(), SongCoordinatorError>>,
     },
     PopSong {
-        respond_to: oneshot::Sender<PopSongResponse>,
+        respond_to: oneshot::Sender<Result<Option<Song>, SongCoordinatorError>>,
     },
     Reposition {
         song_uuid: Uuid,
         position: usize,
-        respond_to: oneshot::Sender<RepositionSongResponse>,
+        respond_to: oneshot::Sender<Result<(), SongCoordinatorError>>,
     },
     Current {
-        respond_to: oneshot::Sender<CurrentSongResponse>,
+        respond_to: oneshot::Sender<Result<Option<Song>, SongCoordinatorError>>,
     },
     GetQueue {
-        respond_to: oneshot::Sender<GetQueueResponse>,
+        respond_to: oneshot::Sender<Result<VecDeque<Song>, SongCoordinatorError>>,
     },
     KeyUp {
-        respond_to: oneshot::Sender<KeyUpResponse>,
+        respond_to: oneshot::Sender<Result<i8, SongCoordinatorError>>,
     },
     KeyDown {
-        respond_to: oneshot::Sender<KeyDownResponse>,
+        respond_to: oneshot::Sender<Result<i8, SongCoordinatorError>>,
+    },
+    GetKey {
+        respond_to: oneshot::Sender<Result<i8, SongCoordinatorError>>
     },
     UpdateSongStatus {
         song_uuid: Uuid,
         status: QueuedSongStatus,
-        respond_to: oneshot::Sender<UpdateSongStatusResponse>,
-    },
-    InitializeSong {
-        song_uuid: Uuid,
-        respond_to: oneshot::Sender<InitializeResponse>,
+        respond_to: oneshot::Sender<Result<(), SongCoordinatorError>>,
     },
 }
 
-pub enum QueueSongResponse {
-    Success,
-    Fail,
-}
+#[derive(Error, Debug)]
+pub enum SongCoordinatorError {
+    #[error("unable to queue song: {uuid}")]
+    QueueSongFailed { uuid: Uuid },
 
-pub enum RemoveSongResponse {
-    Success,
-    Fail,
-}
+    #[error("unable to remove song: {uuid}")]
+    RemoveSongFailed { uuid: Uuid },
 
-pub enum PopSongResponse {
-    Success(Option<Song>),
-    Fail,
-}
+    #[error("unable to pop song")]
+    PopSongFailed,
 
-pub enum RepositionSongResponse {
-    Success,
-    Fail,
-}
+    #[error("unable to reposition song: {uuid}")]
+    RepositionSongFailed { uuid: Uuid },
 
-pub enum CurrentSongResponse {
-    Success(Option<Song>),
-    Fail,
-}
+    #[error("unable to get current song")]
+    GetCurrentSongFailed,
 
-pub enum GetQueueResponse {
-    Success(VecDeque<Song>),
-    Fail,
-}
+    #[error("unable to get queue")]
+    GetQueueFailed,
 
-pub enum KeyUpResponse {
-    Success(i8),
-    Fail,
-}
+    #[error("unable to key up")]
+    KeyUpFailed,
 
-pub enum KeyDownResponse {
-    Success(i8),
-    Fail,
-}
+    #[error("unable to key down")]
+    KeyDownFailed,
 
-pub enum UpdateSongStatusResponse {
-    Success,
-    Fail,
-}
-
-pub enum InitializeResponse {
-    Success,
-    Fail,
+    #[error("unable to update song status for: {uuid}")]
+    UpdateSongStatusFailed { uuid: Uuid },
 }
 
 impl SongActor {
@@ -154,8 +135,8 @@ impl SongActor {
         sse_broadcaster: Arc<sync::broadcast::Sender<SseEvent>>,
     ) -> Self {
         SongActor {
-            receiver: receiver,
-            sse_broadcaster: sse_broadcaster,
+            receiver,
+            sse_broadcaster,
             song_deque: VecDeque::new(),
             current_key: 0,
         }
@@ -164,53 +145,47 @@ impl SongActor {
     async fn handle_message(&mut self, msg: SongActorMessage) {
         match msg {
             SongActorMessage::QueueSong { song, respond_to } => {
-                self.song_deque.push_back(song);
+                self.song_deque.push_back(song.clone());
 
-                let _ = self.sse_broadcaster.send(SseEvent::QueueUpdated {
+
+                println!("hfeakfoewfae");
+
+                if let Err(_) = self.sse_broadcaster.send(SseEvent::QueueUpdated {
                     queue: self.song_deque.clone(),
-                });
+                }) {
+                    println!("failed sse");
+                    self.song_deque.pop_back();
+                    let _ = respond_to.send(Err(SongCoordinatorError::QueueSongFailed {
+                        uuid: song.uuid,
+                    }));
+                    return;
+                }
 
-                let _ = respond_to.send(QueueSongResponse::Success);
+                println!("fewfawe");
+
+                let _ = respond_to.send(Ok(()));
             }
             SongActorMessage::RemoveSong {
                 song_uuid,
                 respond_to,
             } => {
-                if let Some(index) = self.song_deque.iter().position(|x| (*x).uuid == song_uuid) {
+                if let Some(index) = self.song_deque.iter().position(|x| x.uuid == song_uuid) {
                     self.song_deque.remove(index);
                 }
 
-                let _ = respond_to.send(RemoveSongResponse::Success);
+                let _ = respond_to.send(Ok(()));
             }
             SongActorMessage::PopSong { respond_to } => {
                 // remove all failed songs while getting the next one
-                let next_song = loop {
-                    match self.song_deque.front() {
-                        Some(song) if song.status == QueuedSongStatus::Failed => {
-                            self.song_deque.pop_front();
-                            continue;
-                        },
-                        Some(song) if song.status == QueuedSongStatus::InProgress => {
-                            break None;
-                        },
-                        Some(song) if song.status == QueuedSongStatus::Success => {
-                            break self.song_deque.front();
-                        },
-                        Some(_) => break None,
-                        None => break None,
-                    }
-                };
+                let next_song = self.song_deque.pop_front();
 
                 self.current_key = 0;
 
-                let _ = self.sse_broadcaster.send(SseEvent::CurrentSongUpdated {
-                    current_song: next_song.cloned(),
-                });
                 let _ = self.sse_broadcaster.send(SseEvent::QueueUpdated {
                     queue: self.song_deque.clone(),
                 });
 
-                let _ = respond_to.send(PopSongResponse::Success(next_song.cloned()));
+                let _ = respond_to.send(Ok(next_song.clone()));
             }
             SongActorMessage::Reposition {
                 song_uuid,
@@ -218,7 +193,7 @@ impl SongActor {
                 respond_to,
             } => {
                 if let Some(current_index) =
-                    self.song_deque.iter().position(|x| (*x).uuid == song_uuid)
+                    self.song_deque.iter().position(|x| x.uuid == song_uuid)
                 {
                     let song = self.song_deque.remove(current_index).unwrap();
                     let new_position = position.min(self.song_deque.len());
@@ -228,40 +203,43 @@ impl SongActor {
                     });
                 }
 
-                let _ = respond_to.send(RepositionSongResponse::Success);
+                let _ = respond_to.send(Ok(()));
             }
             SongActorMessage::Current { respond_to } => {
-                let _ = respond_to.send(CurrentSongResponse::Success(self.song_deque.front().cloned()));
+                let _ = respond_to.send(Ok(self.song_deque.front().cloned()));
             }
             SongActorMessage::GetQueue { respond_to } => {
-                let _ = respond_to.send(GetQueueResponse::Success(self.song_deque.clone()));
+                let _ = respond_to.send(Ok(self.song_deque.clone()));
             }
             SongActorMessage::KeyUp { respond_to } => {
                 if self.current_key >= 3 {
                     // TODO fix this and grab it from some settings descriptor
-                    let _ = respond_to.send(KeyUpResponse::Fail);
+                    let _ = respond_to.send(Err(SongCoordinatorError::KeyUpFailed));
                 } else {
                     self.current_key += 1;
                     let _ = self.sse_broadcaster.send(SseEvent::KeyChange {
                         current_key: self.current_key,
                     });
 
-                    let _ = respond_to.send(KeyUpResponse::Success(self.current_key));
+                    let _ = respond_to.send(Ok(self.current_key));
                 }
             }
             SongActorMessage::KeyDown { respond_to } => {
                 if self.current_key <= -3 {
                     // TODO fix this and grab it from some settings descriptor
-                    let _ = respond_to.send(KeyDownResponse::Fail);
+                    let _ = respond_to.send(Err(SongCoordinatorError::KeyDownFailed));
                 } else {
                     self.current_key -= 1;
                     let _ = self.sse_broadcaster.send(SseEvent::KeyChange {
                         current_key: self.current_key,
                     });
 
-                    let _ = respond_to.send(KeyDownResponse::Success(self.current_key));
+                    let _ = respond_to.send(Ok(self.current_key));
                 }
-            }
+            },
+            SongActorMessage::GetKey { respond_to } => {
+                let _ = respond_to.send(Ok(self.current_key));
+            },
             SongActorMessage::UpdateSongStatus {
                 song_uuid,
                 status,
@@ -278,81 +256,16 @@ impl SongActor {
                         queue: self.song_deque.clone(),
                     });
 
-                    let _ = respond_to.send(UpdateSongStatusResponse::Success);
+                    let _ = respond_to.send(Ok(()));
                 } else {
                     println!("failed uuid {}", song_uuid);
 
-                    let _ = respond_to.send(UpdateSongStatusResponse::Fail);
-                }
-            }
-            SongActorMessage::InitializeSong {
-                song_uuid,
-                respond_to,
-            } => {
-                // TODO fix this shit
-                if let Some(index) = self
-                    .song_deque
-                    .iter()
-                    .position(|song| song.uuid == song_uuid)
-                {
-                    if index == 0 {
-                        let next_song = loop {
-                            match self.song_deque.front() {
-                                Some(song) if song.status == QueuedSongStatus::Failed => {
-                                    self.song_deque.pop_front();
-                                    continue;
-                                },
-                                Some(song) if song.status == QueuedSongStatus::InProgress => {
-                                    break None;
-                                },
-                                Some(song) if song.status == QueuedSongStatus::Success => {
-                                    break self.song_deque.front();
-                                },
-                                Some(_) => break None,
-                                None => break None,
-                            }
-                        };
-
-                        let _ = self.sse_broadcaster.send(SseEvent::CurrentSongUpdated {
-                            current_song: next_song.cloned(),
-                        });
-                        
-                        self.current_key = 0;
-                    }
-
-                    let _ = self.sse_broadcaster.send(SseEvent::QueueUpdated {
-                        queue: self.song_deque.clone(),
-                    });
-
-                    let _ = respond_to.send(InitializeResponse::Success);
-                } else {
-                    println!("failed uuid {}", song_uuid);
-
-                    let _ = respond_to.send(InitializeResponse::Fail);
+                    let _ = respond_to.send(Err(SongCoordinatorError::UpdateSongStatusFailed {
+                        uuid: (song_uuid),
+                    }));
                 }
             }
         }
-    }
-
-    fn pop_failures(&mut self) -> Option<Song> {
-        let next_song = loop {
-            match self.song_deque.front() {
-                Some(song) if song.status == QueuedSongStatus::Failed => {
-                    self.song_deque.pop_front();
-                    continue;
-                },
-                Some(song) if song.status == QueuedSongStatus::InProgress => {
-                    break None;
-                },
-                Some(song) if song.status == QueuedSongStatus::Success => {
-                    break None;
-                },
-                Some(_) => break None,
-                None => break None,
-            }
-        };
-
-        next_song
     }
 }
 
@@ -376,10 +289,10 @@ impl SongActorHandle {
         Self { sender }
     }
 
-    pub async fn queue_song(&self, song: Song) -> QueueSongResponse {
+    pub async fn queue_song(&self, song: Song) -> Result<(), SongCoordinatorError> {
         let (send, recv) = oneshot::channel();
         let msg = SongActorMessage::QueueSong {
-            song: song,
+            song,
             respond_to: send,
         };
 
@@ -391,10 +304,10 @@ impl SongActorHandle {
         &self,
         song_uuid: Uuid,
         new_status: QueuedSongStatus,
-    ) -> UpdateSongStatusResponse {
+    ) -> Result<(), SongCoordinatorError> {
         let (send, recv) = oneshot::channel();
         let msg = SongActorMessage::UpdateSongStatus {
-            song_uuid: song_uuid,
+            song_uuid,
             status: new_status,
             respond_to: send,
         };
@@ -403,10 +316,10 @@ impl SongActorHandle {
         recv.await.expect("Actor task has been killed")
     }
 
-    pub async fn remove_song(&self, song_uuid: Uuid) -> RemoveSongResponse {
+    pub async fn remove_song(&self, song_uuid: Uuid) -> Result<(), SongCoordinatorError> {
         let (send, recv) = oneshot::channel();
         let msg = SongActorMessage::RemoveSong {
-            song_uuid: song_uuid,
+            song_uuid,
             respond_to: send,
         };
 
@@ -414,7 +327,7 @@ impl SongActorHandle {
         recv.await.expect("Actor task has been killed")
     }
 
-    pub async fn pop_song(&self) -> PopSongResponse {
+    pub async fn pop_song(&self) -> Result<Option<Song>, SongCoordinatorError> {
         let (send, recv) = oneshot::channel();
         let msg = SongActorMessage::PopSong { respond_to: send };
 
@@ -426,11 +339,11 @@ impl SongActorHandle {
         &self,
         song_uuid: Uuid,
         position: usize,
-    ) -> RepositionSongResponse {
+    ) -> Result<(), SongCoordinatorError> {
         let (send, recv) = oneshot::channel();
         let msg = SongActorMessage::Reposition {
-            song_uuid: song_uuid,
-            position: position,
+            song_uuid,
+            position,
             respond_to: send,
         };
 
@@ -438,7 +351,7 @@ impl SongActorHandle {
         recv.await.expect("Actor task has been killed")
     }
 
-    pub async fn current_song(&self) -> CurrentSongResponse {
+    pub async fn current_song(&self) -> Result<Option<Song>, SongCoordinatorError> {
         let (send, recv) = oneshot::channel();
         let msg = SongActorMessage::Current { respond_to: send };
 
@@ -446,7 +359,7 @@ impl SongActorHandle {
         recv.await.expect("Actor task has been killed")
     }
 
-    pub async fn get_queue(&self) -> GetQueueResponse {
+    pub async fn get_queue(&self) -> Result<VecDeque<Song>, SongCoordinatorError> {
         let (send, recv) = oneshot::channel();
         let msg = SongActorMessage::GetQueue { respond_to: send };
 
@@ -454,7 +367,7 @@ impl SongActorHandle {
         recv.await.expect("Actor task has been killed")
     }
 
-    pub async fn key_up(&self) -> KeyUpResponse {
+    pub async fn key_up(&self) -> Result<i8, SongCoordinatorError> {
         let (send, recv) = oneshot::channel();
         let msg = SongActorMessage::KeyUp { respond_to: send };
 
@@ -462,7 +375,7 @@ impl SongActorHandle {
         recv.await.expect("Actor task has been killed")
     }
 
-    pub async fn key_down(&self) -> KeyDownResponse {
+    pub async fn key_down(&self) -> Result<i8, SongCoordinatorError> {
         let (send, recv) = oneshot::channel();
         let msg = SongActorMessage::KeyDown { respond_to: send };
 
@@ -470,9 +383,9 @@ impl SongActorHandle {
         recv.await.expect("Actor task has been killed")
     }
 
-    pub async fn initialize(&self, song_uuid: Uuid) -> InitializeResponse {
+    pub async fn get_key(&self) -> Result<i8, SongCoordinatorError> {
         let (send, recv) = oneshot::channel();
-        let msg = SongActorMessage::InitializeSong { song_uuid: song_uuid, respond_to: send };
+        let msg = SongActorMessage::GetKey { respond_to: send };
 
         let _ = self.sender.send(msg).await;
         recv.await.expect("Actor task has been killed")

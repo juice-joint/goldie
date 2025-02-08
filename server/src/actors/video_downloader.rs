@@ -1,10 +1,6 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::sync::Arc;
 
 use tokio::sync::oneshot;
-use uuid::{uuid, Uuid};
 
 use crate::lib::{
     pitch_shifter::DashPitchShifter,
@@ -35,7 +31,7 @@ impl VideoDlActor {
         video_downloader: Arc<YtDownloader>,
     ) -> Self {
         VideoDlActor {
-            receiver: receiver,
+            receiver,
             downloader: video_downloader,
         }
     }
@@ -49,10 +45,10 @@ impl VideoDlActor {
                 file_path,
                 respond_to,
             } => {
-                let result = self.process_video(yt_link, file_path).await;
+                let result = self.process_video(&yt_link, &file_path).await;
                 let response = match result {
                     Ok(video_file_path) => DownloadVideoResponse::Success {
-                        video_file_path: video_file_path,
+                        video_file_path,
                     },
                     Err(e) => {
                         eprintln!("Video processing error: {}", e);
@@ -64,9 +60,9 @@ impl VideoDlActor {
         }
     }
 
-    async fn process_video(&self, yt_link: String, file_path: String) -> Result<String, VideoProcessError> {
+    async fn process_video(&self, yt_link: &str, file_path: &str) -> Result<String, VideoProcessError> {
         // Download the video
-        let (video_file_path, extension) = self.downloader.download(&yt_link, &file_path).await?;
+        let (video_file_path, extension) = self.downloader.download(yt_link, &file_path).await?;
         println!("Download successful! Saved as: {}", video_file_path);
 
         // Process with pitch shifting
@@ -111,8 +107,8 @@ impl VideoDlActorHandle {
     pub async fn download_video(&self, yt_link: String, file_path: String) -> DownloadVideoResponse {
         let (send, recv) = oneshot::channel();
         let msg = VideoDlActorMessage::DownloadVideo {
-            yt_link: yt_link,
-            file_path: file_path,
+            yt_link,
+            file_path,
             respond_to: send,
         };
 

@@ -1,10 +1,5 @@
 
-use std::{
-    collections::HashMap,
-    io::Write,
-    path::{Path, PathBuf},
-    sync::Arc
-};
+use std::sync::Arc;
 
 
 use axum::routing::post;
@@ -14,6 +9,7 @@ use axum::{
 };
 use tokio::sync;
 
+use crate::routes::admin::{get_key, reposition_song};
 use crate::{actors::song_coordinator::SongActorHandle, lib::file_storage::storage_dir, routes::admin::{key_down, key_up, toggle_playback}};
 use crate::actors::video_downloader::VideoDlActorHandle;
 use crate::lib::yt_downloader::YtDownloader;
@@ -24,8 +20,7 @@ use crate::{routes::healthcheck::healthcheck, state::AppState};
 
 pub async fn create_router_with_state() -> Router {
     let storage_dir = storage_dir("pi-tchperfect");
-    let base_dir = "./assets";
-    let yt_downloader = Arc::new(YtDownloader::new(String::from(base_dir)));
+    let yt_downloader = Arc::new(YtDownloader::new(String::from("./assets")));
 
     let (sse_broadcaster, _) = sync::broadcast::channel(10);
     let sse_broadcaster = Arc::new(sse_broadcaster);
@@ -48,5 +43,7 @@ pub async fn create_router_with_state() -> Router {
             .route("/toggle_playback", post(toggle_playback))
             .route("/key_up", post(key_up))
             .route("/key_down", post(key_down))
+            .route("/get_key", get(get_key))
+            .route("/reposition_song", post(reposition_song))
             .with_state(app_state)
 }

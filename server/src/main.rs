@@ -20,10 +20,6 @@ mod lib {
     pub mod yt_downloader;
 }
 
-use axum::http::{
-    header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
-    HeaderValue, Method,
-};
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::router::create_router_with_state;
