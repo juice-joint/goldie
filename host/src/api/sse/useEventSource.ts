@@ -14,6 +14,8 @@ export const useEventSource = () => {
   const getQueue = useQueue();
 
   const query = useQuery({
+    gcTime: 0,
+    staleTime: Infinity,
     queryKey: ["sse", SSE_URL],
     queryFn: () => {
       return new Promise((resolve) => {
@@ -25,8 +27,6 @@ export const useEventSource = () => {
           eventSource.onmessage = (event) => {
             try {
               const data = JSON.parse(event.data) as SSEEvent;
-              console.log("event", data);
-
               switch (data.type) {
                 case EventType.QueueChangeEvent:
                   queryClient.setQueryData<Song[]>(
@@ -48,7 +48,7 @@ export const useEventSource = () => {
                   break;
                 }
                 default:
-                  console.log("invalid event type", data);
+                  console.warn("invalid event type", data);
                   return;
               }
             } catch (e) {

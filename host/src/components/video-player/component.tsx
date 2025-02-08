@@ -22,21 +22,17 @@ function VideoPlayer() {
   }, [playNextSong]);
 
   const handleError = useCallback((e: any) => {
-    console.log("error", e);
+    console.error("error", e);
   }, []);
 
   const switchToTrack = useCallback(
     (player: dashjs.MediaPlayerClass, trackId: string) => {
       const tracks = player.getTracksFor("audio");
-      console.log(tracks);
-      console.log(trackId);
-
       const targetTrack = tracks.find(
         (track) => track.id?.toString() === trackId
       );
       if (targetTrack) {
         player.setCurrentTrack(targetTrack);
-        console.log("switched to track", trackId);
       }
     },
     []
@@ -51,11 +47,7 @@ function VideoPlayer() {
   }, [playbackState]);
 
   useEffect(() => {
-    console.log(key);
-
     if (playerRef.current) {
-      console.log("hello");
-
       switchToTrack(playerRef.current, (key + 4).toString());
     }
   }, [key, switchToTrack, currentSong, playerRef.current]);
