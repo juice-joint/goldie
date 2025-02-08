@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
+use thiserror::Error;
 use tokio::sync::oneshot;
+use uuid::Uuid;
 
 use crate::lib::{
     pitch_shifter::DashPitchShifter,
@@ -11,7 +13,7 @@ pub enum VideoDlActorMessage {
     DownloadVideo {
         yt_link: String,
         file_path: String,
-        respond_to: oneshot::Sender<DownloadVideoResponse>,
+        respond_to: oneshot::Sender<Result<String, VideoProcessError>>,
     },
 }
 
@@ -46,16 +48,7 @@ impl VideoDlActor {
                 respond_to,
             } => {
                 let result = self.process_video(&yt_link, &file_path).await;
-                let response = match result {
-                    Ok(video_file_path) => DownloadVideoResponse::Success {
-                        video_file_path,
-                    },
-                    Err(e) => {
-                        eprintln!("Video processing error: {}", e);
-                        DownloadVideoResponse::Fail
-                    }
-                };
-                let _ = respond_to.send(response);
+                let _ = respond_to.send(result);
             }
         }
     }
@@ -70,8 +63,6 @@ impl VideoDlActor {
             &format!("{}.{}", video_file_path, extension),
             &format!("{}.mpd", video_file_path),
             -3..=3,
-            true,
-            true   
         );
 
         shifter.execute().map_err(|e| {
@@ -107,7 +98,7 @@ impl VideoDlActorHandle {
         Self { sender }
     }
 
-    pub async fn download_video(&self, yt_link: String, file_path: String) -> DownloadVideoResponse {
+    pub async fn download_video(&self, yt_link: String, file_path: String) -> Result<String, VideoProcessError> {
         let (send, recv) = oneshot::channel();
         let msg = VideoDlActorMessage::DownloadVideo {
             yt_link,

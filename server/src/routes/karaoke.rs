@@ -18,12 +18,11 @@ use futures_util::{stream, StreamExt};
 use serde::Deserialize;
 use tokio::{fs::File, sync};
 use tokio_util::io::ReaderStream;
+use tracing::{error, info, trace};
 
 use crate::{
     actors::{
-        song_coordinator::{
-            QueuedSongStatus, Song, SongActorHandle, SongCoordinatorError
-        },
+        song_coordinator::{QueuedSongStatus, Song, SongActorHandle, SongCoordinatorError},
         video_downloader::{DownloadVideoResponse, VideoDlActorHandle},
     },
     state::AppState,
@@ -40,107 +39,121 @@ pub async fn queue_song(
     State(song_actor_handle): State<Arc<SongActorHandle>>,
     State(videodl_actor_handle): State<Arc<VideoDlActorHandle>>,
     Json(payload): Json<QueueSong>,
-) -> Result<impl IntoResponse, StatusCode> {
-    println!("helo beanie 1");
-
+) -> impl IntoResponse {
     let queueable_song = Song::new(payload.name, payload.yt_link, QueuedSongStatus::InProgress);
-
-    println!("queuesongreuqest {:?}", queueable_song);
-    // TODO fix this to use references
+    info!("received queue_song request: {}", queueable_song);
 
     match song_actor_handle.queue_song(queueable_song.clone()).await {
         Ok(_) => {
+            info!("successfully queued song: {}", queueable_song.uuid);
+
             tokio::spawn(async move {
                 match videodl_actor_handle
                     .download_video(queueable_song.yt_link, queueable_song.name.to_string())
                     .await
                 {
-                    DownloadVideoResponse::Success { video_file_path } => {
-                        println!("receieved downloaded video file path");
+                    Ok(video_file_path) => {
+                        info!("successfully downloaded video in: {}", video_file_path);
+
                         match song_actor_handle
                             .update_song_status(queueable_song.uuid, QueuedSongStatus::Success)
                             .await
                         {
                             Ok(_) => {
-                                println!("updated queued song status!");
-
-                                // match song_actor_handle.initialize(queueable_song.uuid).await {
-                                //     InitializeResponse::Success => {
-                                //         println!("updated current song initializaton");
-                                //     }
-                                //     InitializeResponse::Fail => {
-                                //         println!("could not update current song initialization");
-                                //     }
-                                // }
+                                info!(
+                                    "successfully updated song: {} with status: {}",
+                                    queueable_song.uuid,
+                                    QueuedSongStatus::Success
+                                );
                             }
-                            Err(_) => {
-                                println!("wasn't able to update queued song status :(");
-                                // TODO deal with failed, should pop songs until success
+                            Err(err) => {
+                                error!(
+                                    "unable to update status for song: {} with error: {}",
+                                    queueable_song.uuid, err
+                                );
                             }
                         }
 
                         std::fs::remove_file(&video_file_path).unwrap_or_else(|err| {
-                            println!("unable to delete file {} with error: {}", &video_file_path, err);
+                            error!(
+                                "unable to delete file {} with error: {}",
+                                &video_file_path, err
+                            );
                         });
                     }
-                    DownloadVideoResponse::Fail => {
-                        println!("wasn't able to download the video :(");
+                    Err(err) => {
+                        error!(
+                            "could not download video for song: {} with error: {}",
+                            queueable_song.uuid, err
+                        );
 
                         match song_actor_handle
                             .update_song_status(queueable_song.uuid, QueuedSongStatus::Failed)
                             .await
                         {
                             Ok(_) => {
-                                println!("updated queued song status!");
+                                info!(
+                                    "successfully updated song: {} with status: {}",
+                                    queueable_song.uuid,
+                                    QueuedSongStatus::Failed
+                                );
                             }
-                            Err(_) => {
-                                println!("wasn't able to update queued song status :(");
+                            Err(err) => {
+                                error!(
+                                    "unable to update status for song: {} with error: {}",
+                                    queueable_song.uuid, err
+                                );
                             }
                         }
                     }
                 }
             });
         }
-        Err(_) => {
-            println!("wasn't able to queue up the song :(");
+        Err(err) => {
+            error!(
+                "unable to queue song: {} with error: {}",
+                queueable_song.uuid, err
+            );
         }
     }
 
-    Ok(StatusCode::ACCEPTED)
+    StatusCode::ACCEPTED
 }
 
 pub async fn play_next_song(
     State(song_actor_handle): State<Arc<SongActorHandle>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    println!("helo beanie 3");
+) -> impl IntoResponse {
+    info!("received play_next_song request");
 
-    let song_actor_response = song_actor_handle.pop_song().await;
-    match song_actor_response {
-        Ok(_popped_song) => Ok(StatusCode::OK),
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    match song_actor_handle.pop_song().await {
+        Some(song) => {
+            info!("successfully popped song: {}", song);
+            StatusCode::OK
+        }
+        None => {
+            info!("successfully popped song: {}", "none");
+            StatusCode::OK
+        }
     }
 }
 
-pub async fn song_list(
-    State(song_actor_handle): State<Arc<SongActorHandle>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let song_actor_response = song_actor_handle.get_queue().await;
-    match song_actor_response {
-        Ok(list_of_songs) => Ok((StatusCode::OK, Json(list_of_songs))),
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+pub async fn song_list(State(song_actor_handle): State<Arc<SongActorHandle>>) -> impl IntoResponse {
+    match song_actor_handle.get_queue().await {
+        Ok(list_of_songs) => (StatusCode::OK, Json(list_of_songs)).into_response(),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }
 
 pub async fn current_song(
     State(song_actor_handle): State<Arc<SongActorHandle>>,
-) -> Result<impl IntoResponse, StatusCode> {
+) -> impl IntoResponse {
     let song_actor_response = song_actor_handle.current_song().await;
     match song_actor_response {
         Ok(current_song) => match current_song {
-            Some(current_song) => Ok((StatusCode::OK, Json(current_song))),
-            None => Err(StatusCode::NO_CONTENT),
+            Some(current_song) => (StatusCode::OK, Json(current_song)).into_response(),
+            None => StatusCode::NO_CONTENT.into_response(),
         },
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }
 
@@ -167,26 +180,4 @@ pub async fn sse(
         });
 
     Sse::new(stream).keep_alive(KeepAlive::default())
-}
-
-pub async fn here_video(Path(video): Path<String>) -> Result<Response<Body>, StatusCode> {
-    // Open the file
-
-    let file = File::open(format!("assets/{}.mp4", video))
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
-
-    // Create a stream from the file
-    let stream = ReaderStream::new(file);
-    let body = Body::from_stream(stream);
-
-    // Build the response with appropriate headers
-    let response = Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "video/mp4") // Adjust content type as needed
-        .header(ACCEPT_RANGES, "bytes")
-        .body(body)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    Ok(response)
 }

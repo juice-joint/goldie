@@ -1,20 +1,28 @@
-use core::error;
-use std::{collections::VecDeque, sync::Arc, usize};
+use std::{collections::VecDeque, fmt::Display, sync::Arc, usize};
+use strum::Display;
 use thiserror::Error;
 
 use tokio::sync::{self, mpsc, oneshot};
+use tracing::{error, warn};
 use uuid::Uuid;
 
 use crate::routes::karaoke::SseEvent;
 
-#[derive(Clone, Debug, serde::Serialize, PartialEq)]
+fn serialize_uuid<S>(uuid: &Uuid, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(uuid.to_string().as_str())
+}
+
+#[derive(Clone, serde::Serialize, PartialEq, Display)]
 pub enum QueuedSongStatus {
     InProgress,
     Failed,
     Success,
 }
 
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 pub struct Song {
     pub name: String,
     #[serde(serialize_with = "serialize_uuid")]
@@ -23,11 +31,14 @@ pub struct Song {
     pub status: QueuedSongStatus,
 }
 
-fn serialize_uuid<S>(uuid: &Uuid, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    serializer.serialize_str(uuid.to_string().as_str())
+impl Display for Song {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Song: {{ name: {}, uuid: {}, yt_link: {}, status: {} }}",
+            self.name, self.uuid, self.yt_link, self.status
+        )
+    }
 }
 
 impl Song {
@@ -38,12 +49,6 @@ impl Song {
             yt_link,
             status,
         }
-    }
-}
-
-impl ToString for Song {
-    fn to_string(&self) -> String {
-        self.name.clone()
     }
 }
 
@@ -67,10 +72,10 @@ pub enum SongActorMessage {
     },
     RemoveSong {
         song_uuid: Uuid,
-        respond_to: oneshot::Sender<Result<(), SongCoordinatorError>>,
+        respond_to: oneshot::Sender<()>,
     },
     PopSong {
-        respond_to: oneshot::Sender<Result<Option<Song>, SongCoordinatorError>>,
+        respond_to: oneshot::Sender<Option<Song>>,
     },
     Reposition {
         song_uuid: Uuid,
@@ -90,7 +95,7 @@ pub enum SongActorMessage {
         respond_to: oneshot::Sender<Result<i8, SongCoordinatorError>>,
     },
     GetKey {
-        respond_to: oneshot::Sender<Result<i8, SongCoordinatorError>>
+        respond_to: oneshot::Sender<Result<i8, SongCoordinatorError>>,
     },
     UpdateSongStatus {
         song_uuid: Uuid,
@@ -127,6 +132,9 @@ pub enum SongCoordinatorError {
 
     #[error("unable to update song status for: {uuid}")]
     UpdateSongStatusFailed { uuid: Uuid },
+
+    #[error("failed to broadcast SSE event")]
+    SseBroadcastFailed,
 }
 
 impl SongActor {
@@ -147,23 +155,18 @@ impl SongActor {
             SongActorMessage::QueueSong { song, respond_to } => {
                 self.song_deque.push_back(song.clone());
 
-
-                println!("hfeakfoewfae");
-
-                if let Err(_) = self.sse_broadcaster.send(SseEvent::QueueUpdated {
+                match self.sse_broadcaster.send(SseEvent::QueueUpdated {
                     queue: self.song_deque.clone(),
                 }) {
-                    println!("failed sse");
-                    self.song_deque.pop_back();
-                    let _ = respond_to.send(Err(SongCoordinatorError::QueueSongFailed {
-                        uuid: song.uuid,
-                    }));
-                    return;
+                    Ok(_) => {
+                        let _ = respond_to.send(Ok(()));
+                    }
+                    Err(err) => {
+                        // Remove the song since broadcasting failed
+                        warn!("failed to broadcast SSE event for queue update event for song: {} with error: {}", song.uuid, err);
+                        let _ = respond_to.send(Ok(()));
+                    }
                 }
-
-                println!("fewfawe");
-
-                let _ = respond_to.send(Ok(()));
             }
             SongActorMessage::RemoveSong {
                 song_uuid,
@@ -173,7 +176,7 @@ impl SongActor {
                     self.song_deque.remove(index);
                 }
 
-                let _ = respond_to.send(Ok(()));
+                let _ = respond_to.send(());
             }
             SongActorMessage::PopSong { respond_to } => {
                 // remove all failed songs while getting the next one
@@ -181,29 +184,46 @@ impl SongActor {
 
                 self.current_key = 0;
 
-                let _ = self.sse_broadcaster.send(SseEvent::QueueUpdated {
+                match self.sse_broadcaster.send(SseEvent::QueueUpdated {
                     queue: self.song_deque.clone(),
-                });
-
-                let _ = respond_to.send(Ok(next_song.clone()));
+                }) {
+                    Ok(_) => {
+                        let _ = respond_to.send(next_song.clone());
+                    }
+                    Err(err) => {
+                        warn!("failed to broadcast SSE event for queue update event with error: {}", err);
+                        let _ = respond_to.send(next_song.clone());
+                    }
+                }
             }
             SongActorMessage::Reposition {
                 song_uuid,
                 position,
                 respond_to,
             } => {
-                if let Some(current_index) =
-                    self.song_deque.iter().position(|x| x.uuid == song_uuid)
-                {
+                if let Some(current_index) = self.song_deque.iter().position(|x| x.uuid == song_uuid) {
                     let song = self.song_deque.remove(current_index).unwrap();
                     let new_position = position.min(self.song_deque.len());
                     self.song_deque.insert(new_position, song);
-                    let _ = self.sse_broadcaster.send(SseEvent::QueueUpdated {
+                    
+                    match self.sse_broadcaster.send(SseEvent::QueueUpdated {
                         queue: self.song_deque.clone(),
-                    });
+                    }) {
+                        Ok(_) => {
+                            let _ = respond_to.send(Ok(()));
+                        }
+                        Err(err) => {
+                            warn!(
+                                "failed to broadcast SSE event for queue update event for song: {} with error: {}", 
+                                song_uuid, 
+                                err
+                            );
+                            let _ = respond_to.send(Ok(()));
+                        }
+                    }
+                } else {
+                    let _ = respond_to.send(Ok(()));
                 }
-
-                let _ = respond_to.send(Ok(()));
             }
             SongActorMessage::Current { respond_to } => {
                 let _ = respond_to.send(Ok(self.song_deque.front().cloned()));
@@ -236,10 +256,10 @@ impl SongActor {
 
                     let _ = respond_to.send(Ok(self.current_key));
                 }
-            },
+            }
             SongActorMessage::GetKey { respond_to } => {
                 let _ = respond_to.send(Ok(self.current_key));
-            },
+            }
             SongActorMessage::UpdateSongStatus {
                 song_uuid,
                 status,
@@ -316,7 +336,7 @@ impl SongActorHandle {
         recv.await.expect("Actor task has been killed")
     }
 
-    pub async fn remove_song(&self, song_uuid: Uuid) -> Result<(), SongCoordinatorError> {
+    pub async fn remove_song(&self, song_uuid: Uuid) {
         let (send, recv) = oneshot::channel();
         let msg = SongActorMessage::RemoveSong {
             song_uuid,
@@ -327,7 +347,7 @@ impl SongActorHandle {
         recv.await.expect("Actor task has been killed")
     }
 
-    pub async fn pop_song(&self) -> Result<Option<Song>, SongCoordinatorError> {
+    pub async fn pop_song(&self) -> Option<Song> {
         let (send, recv) = oneshot::channel();
         let msg = SongActorMessage::PopSong { respond_to: send };
 

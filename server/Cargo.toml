@@ -13,10 +13,13 @@ local-ip-address = "0.6.3"
 rand = "0.8.5"
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.134"
+strum = { version = "0.26.3", features = ["derive", "strum_macros"] }
 thiserror = { version = "2.0.11", features = ["std"] }
 tokio = { version = "1.42.0", features = ["fs", "io-std", "io-util", "rt-multi-thread"] }
 tokio-stream = { version = "0.1.17", features = ["full"] }
 tokio-util = { version = "0.7.13", features = ["io"] }
 tower = "0.5.2"
-tower-http = { version = "0.6.2", features = ["cors"] }
+tower-http = { version = "0.6.2", features = ["cors", "trace"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 uuid = { version = "1.11.0", features = ["fast-rng", "v4"] }
