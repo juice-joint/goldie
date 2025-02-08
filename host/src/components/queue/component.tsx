@@ -3,7 +3,7 @@ import { useQueueChanges } from "../../api/sse/hooks";
 
 export const Queue = () => {
   const queue = useQueueChanges();
-  const { data: currentSong } = useCurrentSong();
+  const currentSong = useCurrentSong();
 
   const nextSongs = queue?.slice(0, 2) || [];
 
@@ -28,7 +28,7 @@ export const Queue = () => {
       </div>
       <div>
         {nextSongs.length > 0 ? (
-          nextSongs.map((song, i) => (
+          nextSongs.map((song) => (
             <div
               key={song.uuid}
               className="p-3 border-gray-100 hover:bg-purple-50 transition-colors"

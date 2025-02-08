@@ -7,9 +7,10 @@ import { useCurrentSong } from "../../api/queries/useCurrentSong";
 import dashjs from "dashjs";
 import { usePlayback } from "../../api/queries/usePlayback";
 import { useKey } from "../../api/queries/useKey";
+import { Status } from "../../api/api-types";
 
 function VideoPlayer() {
-  const { data: currentSong } = useCurrentSong();
+  const currentSong = useCurrentSong();
   const vidRef = useRef<HTMLVideoElement>(null);
   const playerRef = useRef<dashjs.MediaPlayerClass | null>(null);
   const { mutate: playNextSong } = usePlayNextSong();
@@ -59,10 +60,14 @@ function VideoPlayer() {
 
       switchToTrack(playerRef.current, (key + 4).toString());
     }
-  }, [key, switchToTrack]);
+  }, [key, switchToTrack, currentSong, playerRef.current]);
 
   useEffect(() => {
-    if (currentSong?.name && vidRef.current) {
+    if (
+      currentSong?.name &&
+      vidRef.current &&
+      currentSong.status === Status.Success
+    ) {
       // destroy existing player if it exists
       if (playerRef.current) {
         playerRef.current.destroy();
@@ -72,6 +77,7 @@ function VideoPlayer() {
       const player = dashjs.MediaPlayer().create();
       playerRef.current = player;
       console.log(currentSong.name);
+      // TODO: the first segment is the lowest key.
       player.initialize(
         vidRef.current,
         `${API_URL}/dash/${currentSong.name}/${currentSong.name}.mpd`,
@@ -130,13 +136,27 @@ function VideoPlayer() {
     return null;
   }
 
+  console.log(currentSong);
+
   return (
     <div className="relative w-full h-full bg-gradient-to-br from-purple-900 via-indigo-900 to-blue-900">
-      <video
-        className="w-full h-full rounded-lg shadow-2xl"
-        ref={vidRef}
-        controls
-      />
+      {currentSong.status === Status.InProgress && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-16 h-16 border-4 border-purple-200 border-t-purple-500 rounded-full animate-spin" />
+          <div className="mt-4 text-center">
+            <p className="text-white text-lg font-medium mt-1">
+              downloading {currentSong.formattedName}...
+            </p>
+          </div>
+        </div>
+      )}
+      {currentSong.status === Status.Success && (
+        <video
+          className="w-full h-full rounded-lg shadow-2xl"
+          ref={vidRef}
+          controls
+        />
+      )}
       <div className="absolute bottom-0 left-0 right-0">
         <div className="h-1 bg-gray-800/50">
           <div

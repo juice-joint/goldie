@@ -5,6 +5,7 @@ export const useKey = () => {
   const { data: key } = useQuery<number>({
     queryKey: QUERY_KEYS.key,
     enabled: true,
+    initialData: 0,
   });
 
   return key ?? 0;

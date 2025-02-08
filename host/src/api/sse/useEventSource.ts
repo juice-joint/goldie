@@ -46,12 +46,13 @@ export const useEventSource = () => {
                     data.current_key
                   );
                   break;
-                case EventType.TogglePlayback:
+                case EventType.TogglePlayback: {
                   const oldQueryData = queryClient.getQueryData<boolean>(
                     QUERY_KEYS.playback
                   );
                   queryClient.setQueryData(QUERY_KEYS.playback, !oldQueryData);
                   break;
+                }
                 default:
                   console.log("invalid event type", data);
                   return;
