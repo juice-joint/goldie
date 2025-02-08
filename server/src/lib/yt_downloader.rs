@@ -43,7 +43,7 @@ impl YtDownloader {
             "--restrict-filenames".to_string(),
             "--get-filename".to_string(),
             "--no-simulate".to_string(),
-            format!("ytsearch:{}", yt_link.to_string()),
+            format!("-- {}", yt_link.to_string()),
         ];
 
         println!("yt-dlp command: {:?}", args);

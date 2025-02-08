@@ -70,6 +70,8 @@ impl VideoDlActor {
             &format!("{}.{}", video_file_path, extension),
             &format!("{}.mpd", video_file_path),
             -3..=3,
+            true,
+            true   
         );
 
         shifter.execute().map_err(|e| {
@@ -95,6 +97,7 @@ impl VideoDlActorHandle {
     pub fn new(yt_downloader: Arc<YtDownloader>) -> Self {
         let (sender, receiver) = async_channel::bounded(5);
 
+        // TODO grab from settings descriptor
         const NUM_CONSUMERS: u8 = 3;
         for _ in 0..NUM_CONSUMERS {
             let actor = VideoDlActor::new(receiver.clone(), yt_downloader.clone());
