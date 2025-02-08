@@ -4,7 +4,6 @@ mod routes {
     pub mod healthcheck;
     pub mod karaoke;
     pub mod sys;
-    pub mod test;
     pub mod streaming;
 }
 mod state;

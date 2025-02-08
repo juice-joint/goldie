@@ -70,6 +70,8 @@ impl VideoDlActor {
             &format!("{}.{}", video_file_path, extension),
             &format!("{}.mpd", video_file_path),
             -3..=3,
+            true,
+            true   
         );
 
         shifter.execute().map_err(|e| {
