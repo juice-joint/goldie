@@ -14,12 +14,8 @@ export function usePlayNextSong() {
 
   return useMutation({
     mutationFn: playNextSong,
-    onSuccess: (data) => {
-      // invalidate both current song and queue queries to refresh them
-      if (data.status === 204) {
-        queryClient.setQueryData(QUERY_KEYS.currentSong, null);
-      }
-      // queryClient.invalidateQueries({ queryKey: QUERY_KEYS.currentSong });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.key });
     },
   });
 }
