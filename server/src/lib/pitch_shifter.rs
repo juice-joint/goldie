@@ -10,9 +10,7 @@ impl PitchShift {
         // Calculate rate multiplier using 2^(n/12) formula
         let rate_multiplier = 2f64.powf(semitones as f64 / 12.0);
 
-        PitchShift {
-            rate_multiplier,
-        }
+        PitchShift { rate_multiplier }
     }
 }
 
@@ -45,7 +43,7 @@ impl DashPitchShifter {
             filter.push_str(&format!("[a{}]", i));
         }
         filter.push(';');
-       
+
         // Add rubberband pitch shift filters for each stream
         // Convert semitones to pitch multiplier using the rate_multiplier
         for (i, shift) in self.shifts.iter().enumerate() {
@@ -54,7 +52,7 @@ impl DashPitchShifter {
                 i, shift.rate_multiplier, i
             ));
         }
-       
+
         // Remove the last semicolon
         filter.pop();
         filter
@@ -102,6 +100,15 @@ impl DashPitchShifter {
             .arg(&self.input_file)
             .arg("-threads")
             .arg("0")
+            // Enable filter threading
+            .arg("-filter_threads")
+            .arg("0")
+            // Enable complex filter threading
+            .arg("-filter_complex_threads")
+            .arg("0")
+            // Enable more aggressive thread-based optimization
+            .arg("-thread_type")
+            .arg("frame")
             .arg("-filter_complex")
             .arg(self.build_filter_complex())
             .args(self.build_stream_mappings())
