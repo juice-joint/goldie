@@ -70,3 +70,20 @@ pub async fn reposition_song(
         Err(_) => Err(StatusCode::NOT_MODIFIED),
     }
 }
+
+#[derive(Deserialize)]
+pub struct DeleteSongRequest {
+    song_uuid: String,
+}
+
+#[debug_handler(state = AppState)]
+pub async fn remove_song(
+    State(song_actor_handle): State<Arc<SongActorHandle>>,
+    Json(payload): Json<DeleteSongRequest>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let song_uuid = Uuid::parse_str(&payload.song_uuid).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    song_actor_handle.remove_song(song_uuid).await;
+    Ok(StatusCode::OK)
+}
+
