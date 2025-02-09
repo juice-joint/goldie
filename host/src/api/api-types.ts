@@ -2,6 +2,7 @@ export enum Status {
   Success = "Success",
   InProgress = "InProgress",
   Failed = "Failed",
+  Ready = "Ready",
 }
 
 export interface Song {
