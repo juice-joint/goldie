@@ -50,7 +50,7 @@ impl DashPitchShifter {
         // Convert semitones to pitch multiplier using the rate_multiplier
         for (i, shift) in self.shifts.iter().enumerate() {
             filter.push_str(&format!(
-                " [a{}]rubberband=pitch={}[p{}];",
+                " [a{}]rubberband=pitch={}:threads=1[p{}];",
                 i, shift.rate_multiplier, i
             ));
         }
@@ -100,6 +100,8 @@ impl DashPitchShifter {
         command
             .arg("-i")
             .arg(&self.input_file)
+            .arg("-threads")
+            .arg("0")
             .arg("-filter_complex")
             .arg(self.build_filter_complex())
             .args(self.build_stream_mappings())
