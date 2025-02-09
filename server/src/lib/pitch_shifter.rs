@@ -48,7 +48,7 @@ impl DashPitchShifter {
         // Convert semitones to pitch multiplier using the rate_multiplier
         for (i, shift) in self.shifts.iter().enumerate() {
             filter.push_str(&format!(
-                " [a{}]rubberband=pitch={}:threads=1[p{}];",
+                " [a{}]rubberband=pitch={}:threads=16[p{}];",
                 i, shift.rate_multiplier, i
             ));
         }
@@ -93,22 +93,19 @@ impl DashPitchShifter {
     }
 
     pub fn execute(&self) -> std::io::Result<()> {
-        let mut command = Command::new("taskset");
+        let mut command = Command::new("ffmpeg");
 
         command
-            .arg("-c")
-            .arg("0,1,2")
-            .arg("ffmpeg")
             .arg("-i")
             .arg(&self.input_file)
             .arg("-threads")
-            .arg("0")
+            .arg("16")
             // Enable filter threading
             .arg("-filter_threads")
-            .arg("0")
+            .arg("16")
             // Enable complex filter threading
             .arg("-filter_complex_threads")
-            .arg("0")
+            .arg("16")
             // Enable more aggressive thread-based optimization
             .arg("-thread_type")
             .arg("frame")
