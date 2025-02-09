@@ -9,7 +9,7 @@ use axum::{
 };
 use tokio::sync;
 
-use crate::routes::admin::{get_key, reposition_song};
+use crate::routes::admin::{get_key, remove_song, reposition_song};
 use crate::{actors::song_coordinator::SongActorHandle, lib::file_storage::storage_dir, routes::admin::{key_down, key_up, toggle_playback}};
 use crate::actors::video_downloader::VideoDlActorHandle;
 use crate::lib::yt_downloader::YtDownloader;
@@ -44,5 +44,6 @@ pub async fn create_router_with_state() -> Router {
             .route("/key_down", post(key_down))
             .route("/get_key", get(get_key))
             .route("/reposition_song", post(reposition_song))
+            .route("/remove_song", post(remove_song))
             .with_state(app_state)
 }
