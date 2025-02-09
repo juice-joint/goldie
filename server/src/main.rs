@@ -17,6 +17,7 @@ mod lib {
     pub mod os;
     pub mod pitch_shifter;
     pub mod yt_downloader;
+    pub mod test;
 }
 
 use tower_http::{

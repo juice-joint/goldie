@@ -5,7 +5,7 @@ use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use crate::lib::{
-    pitch_shifter::DashPitchShifter,
+    pitch_shifter::{DashPitchShifter},
     yt_downloader::{VideoProcessError, YtDownloader},
 };
 
