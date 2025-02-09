@@ -93,9 +93,12 @@ impl DashPitchShifter {
     }
 
     pub fn execute(&self) -> std::io::Result<()> {
-        let mut command = Command::new("ffmpeg");
+        let mut command = Command::new("taskset");
 
         command
+            .arg("-c")
+            .arg("0,1,2")
+            .arg("ffmpeg")
             .arg("-i")
             .arg(&self.input_file)
             .arg("-threads")
