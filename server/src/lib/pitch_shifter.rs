@@ -47,7 +47,7 @@ impl DashPitchShifter {
     }
 
     fn build_filter_complex(&self, shift: &PitchShift) -> String {
-        format!("[0:a]rubberband=pitch={}:threads=16[p0]", shift.rate_multiplier)
+        format!("[0:a]rubberband=pitch={}:pitchq=speed:threads=16[p0]", shift.rate_multiplier)
     }
 
     fn build_adaptation_sets(&self) -> String {
