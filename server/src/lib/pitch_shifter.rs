@@ -48,7 +48,7 @@ impl DashPitchShifter {
 
     fn build_filter_complex(&self, shift: &PitchShift) -> String {
         // Reduced threads to 3 since we're using only 3 cores
-        format!("[0:a]rubberband=pitch={}:pitchq=speed:threads=3[p0]", shift.rate_multiplier)
+        format!("[0:a]rubberband=pitch={}:transients=crisp:detector=compound:phase=independent:window=standard:smoothing=off:formant=shifted:pitchq=speed:channels=together[p0]", shift.rate_multiplier)
     }
 
     fn build_adaptation_sets(&self) -> String {
