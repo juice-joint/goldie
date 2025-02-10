@@ -67,6 +67,7 @@ impl VideoDlActor {
             &format!("{}/{}.{}", dir, file_name, extension),
             &format!("{}", dir),
             -3..=3,
+            2
         );
 
         pitch_shifter.execute().await.map_err(|e| {
@@ -233,7 +234,7 @@ impl VideoDlActorHandle {
         let (sender, receiver) = async_channel::bounded(5);
 
         // TODO grab from settings descriptor
-        const NUM_CONSUMERS: u8 = 3;
+        const NUM_CONSUMERS: u8 = 1;
         for _ in 0..NUM_CONSUMERS {
             let actor = VideoDlActor::new(receiver.clone(), yt_downloader.clone());
             tokio::spawn(run_video_dl_actor(actor));

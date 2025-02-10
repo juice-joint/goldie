@@ -2,6 +2,8 @@ use tokio::process::Command;
 use futures_util::future::join_all;
 use std::path::Path;
 use tokio::fs;
+use tokio::sync::Semaphore;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct PitchShift {
@@ -24,6 +26,7 @@ pub struct DashPitchShifter {
     input_file: String,
     output_dir: String,
     shifts: Vec<PitchShift>,
+    max_concurrent_tasks: usize,
 }
 
 impl DashPitchShifter {
@@ -31,6 +34,7 @@ impl DashPitchShifter {
         input_file: &str,
         output_dir: &str,
         semitone_range: std::ops::RangeInclusive<i32>,
+        max_concurrent_tasks: usize,
     ) -> Self {
         let shifts: Vec<PitchShift> = semitone_range.map(PitchShift::new).collect();
 
@@ -38,6 +42,7 @@ impl DashPitchShifter {
             input_file: input_file.to_string(),
             output_dir: output_dir.to_string(),
             shifts,
+            max_concurrent_tasks,
         }
     }
 
@@ -63,7 +68,6 @@ impl DashPitchShifter {
     }
 
     fn get_output_path(&self, semitones: i32) -> String {
-        // forgive me for this
         let index = match semitones {
             -3 => 7,
             -2 => 6,
@@ -91,7 +95,6 @@ impl DashPitchShifter {
             if !Path::new(&pitch_dir).exists() {
                 fs::create_dir_all(&pitch_dir).await?;
             }
-
             id += 1;
         }
 
@@ -138,14 +141,35 @@ impl DashPitchShifter {
         Ok(())
     }
 
+    async fn process_shift_with_semaphore(
+        &self,
+        shift: &PitchShift,
+        semaphore: Arc<Semaphore>,
+    ) -> std::io::Result<()> {
+        // Acquire semaphore permit - will wait here if we're at max concurrent tasks
+        let _permit = semaphore.acquire().await.unwrap();
+        
+        println!("Starting processing for {} semitones", shift.semitones);
+        let result = self.process_shift(shift).await;
+        println!("Finished processing for {} semitones", shift.semitones);
+        
+        // Permit is automatically released when _permit is dropped at end of scope
+        result
+    }
+
     pub async fn execute(&self) -> std::io::Result<()> {
         // Ensure output directories exist before processing
         self.ensure_output_directories().await?;
 
-        // Create futures for all shifts
-        let futures = self.shifts.iter().map(|shift| self.process_shift(shift));
+        // Create semaphore to limit concurrent tasks
+        let semaphore = Arc::new(Semaphore::new(self.max_concurrent_tasks));
 
-        // Execute all futures concurrently
+        // Create futures for all shifts, but with semaphore control
+        let futures = self.shifts.iter().map(|shift| {
+            self.process_shift_with_semaphore(shift, Arc::clone(&semaphore))
+        });
+
+        // Execute all futures with controlled concurrency
         let results = join_all(futures).await;
         
         // Check for any errors
