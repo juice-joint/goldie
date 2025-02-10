@@ -67,7 +67,7 @@ impl VideoDlActor {
             &format!("{}/{}.{}", dir, file_name, extension),
             &format!("{}", dir),
             -3..=3,
-            3
+            8
         );
 
         pitch_shifter.execute().await.map_err(|e| {

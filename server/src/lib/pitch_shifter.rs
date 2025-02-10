@@ -47,7 +47,8 @@ impl DashPitchShifter {
     }
 
     fn build_filter_complex(&self, shift: &PitchShift) -> String {
-        format!("[0:a]rubberband=pitch={}:pitchq=speed:threads=16[p0]", shift.rate_multiplier)
+        // Reduced threads to 3 since we're using only 3 cores
+        format!("[0:a]rubberband=pitch={}:pitchq=speed:threads=3[p0]", shift.rate_multiplier)
     }
 
     fn build_adaptation_sets(&self) -> String {
@@ -102,16 +103,20 @@ impl DashPitchShifter {
     }
 
     async fn process_shift(&self, shift: &PitchShift) -> std::io::Result<()> {
-        let mut command = Command::new("ffmpeg");
-        command
+        // Create taskset command to restrict CPU cores
+        let mut taskset_command = Command::new("taskset");
+        taskset_command
+            .arg("--cpu-list")
+            .arg("0,1,2")
+            .arg("ffmpeg")
             .arg("-i")
             .arg(&self.input_file)
             .arg("-threads")
-            .arg("16")
+            .arg("3")  // Reduced to match available cores
             .arg("-filter_threads")
-            .arg("16")
+            .arg("3")  // Reduced to match available cores
             .arg("-filter_complex_threads")
-            .arg("16")
+            .arg("3")  // Reduced to match available cores
             .arg("-thread_type")
             .arg("frame")
             .arg("-filter_complex")
@@ -127,9 +132,9 @@ impl DashPitchShifter {
             .arg(self.get_output_path(shift.semitones));
 
         println!("Executing FFmpeg command for {} semitones:", shift.semitones);
-        println!("{:?}", command);
+        println!("{:?}", taskset_command);
 
-        let output = command.output().await?;
+        let output = taskset_command.output().await?;
         if !output.status.success() {
             let error = String::from_utf8_lossy(&output.stderr);
             eprintln!("FFmpeg error: {}", error);
