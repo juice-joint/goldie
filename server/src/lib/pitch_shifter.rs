@@ -1,119 +1,119 @@
-use std::process::Command;
+use tokio::process::Command;
+use futures_util::future::join_all;
+use std::path::Path;
+use tokio::fs;
 
 #[derive(Debug)]
 pub struct PitchShift {
     pub rate_multiplier: f64,
+    pub semitones: i32,
 }
 
 impl PitchShift {
     fn new(semitones: i32) -> Self {
         // Calculate rate multiplier using 2^(n/12) formula
         let rate_multiplier = 2f64.powf(semitones as f64 / 12.0);
-
-        PitchShift { rate_multiplier }
+        PitchShift { 
+            rate_multiplier,
+            semitones,
+        }
     }
 }
 
 pub struct DashPitchShifter {
     input_file: String,
-    output_file: String,
+    output_dir: String,
     shifts: Vec<PitchShift>,
 }
 
 impl DashPitchShifter {
     pub fn new(
         input_file: &str,
-        output_file: &str,
+        output_dir: &str,
         semitone_range: std::ops::RangeInclusive<i32>,
     ) -> Self {
         let shifts: Vec<PitchShift> = semitone_range.map(PitchShift::new).collect();
 
         DashPitchShifter {
             input_file: input_file.to_string(),
-            output_file: output_file.to_string(),
+            output_dir: output_dir.to_string(),
             shifts,
         }
     }
 
-    fn build_filter_complex(&self) -> String {
-        let num_streams = self.shifts.len();
-        // Create asplit filter
-        let mut filter = format!("[0:a]asplit={}", num_streams);
-        for i in 0..num_streams {
-            filter.push_str(&format!("[a{}]", i));
-        }
-        filter.push(';');
-
-        // Add rubberband pitch shift filters for each stream
-        // Convert semitones to pitch multiplier using the rate_multiplier
-        for (i, shift) in self.shifts.iter().enumerate() {
-            filter.push_str(&format!(
-                " [a{}]rubberband=pitch={}:threads=16[p{}];",
-                i, shift.rate_multiplier, i
-            ));
-        }
-
-        // Remove the last semicolon
-        filter.pop();
-        filter
+    fn build_filter_complex(&self, shift: &PitchShift) -> String {
+        format!("[0:a]rubberband=pitch={}:threads=16[p0]", shift.rate_multiplier)
     }
 
     fn build_adaptation_sets(&self) -> String {
-        let mut adaptation_sets = String::from("id=0,streams=0 ");
-
-        for (i, _shift) in self.shifts.iter().enumerate() {
-            adaptation_sets.push_str(&format!("id={},streams={} ", i + 1, i + 1,));
-        }
-
-        adaptation_sets.trim().to_string()
+        "id=0,streams=0".to_string()
     }
 
     fn build_stream_mappings(&self) -> Vec<String> {
-        let mut mappings = vec!["-map".to_string(), "0:v".to_string()];
-
-        for i in 0..self.shifts.len() {
-            mappings.push("-map".to_string());
-            mappings.push(format!("[p{}]", i));
-        }
-
-        mappings
+        vec!["-map".to_string(), "[p0]".to_string()]
     }
 
     fn build_audio_encodings(&self) -> Vec<String> {
-        let mut encodings = Vec::new();
-
-        for i in 0..self.shifts.len() {
-            encodings.push("-c:a:".to_string() + &i.to_string());
-            encodings.push("aac".to_string());
-            encodings.push("-b:a:".to_string() + &i.to_string());
-            encodings.push("128k".to_string());
-        }
-
-        encodings
+        vec![
+            "-c:a".to_string(),
+            "aac".to_string(),
+            "-b:a".to_string(),
+            "128k".to_string(),
+        ]
     }
 
-    pub fn execute(&self) -> std::io::Result<()> {
-        let mut command = Command::new("ffmpeg");
+    fn get_output_path(&self, semitones: i32) -> String {
+        // forgive me for this
+        let index = match semitones {
+            -3 => 7,
+            -2 => 6,
+            -1 => 5,
+            0 => 1,
+            1 => 2,
+            2 => 3,
+            3 => 4,
+            _ => 1,
+        };
 
+        format!("{}/pitch{}/stream.mpd", self.output_dir, index)
+    }
+
+    async fn ensure_output_directories(&self) -> std::io::Result<()> {
+        // Create main output directory if it doesn't exist
+        if !Path::new(&self.output_dir).exists() {
+            fs::create_dir_all(&self.output_dir).await?;
+        }
+
+        // Create pitch-specific subdirectories
+        let mut id = 1;
+        for _shift in &self.shifts {
+            let pitch_dir = format!("{}/pitch{}", self.output_dir, id);
+            if !Path::new(&pitch_dir).exists() {
+                fs::create_dir_all(&pitch_dir).await?;
+            }
+
+            id += 1;
+        }
+
+        Ok(())
+    }
+
+    async fn process_shift(&self, shift: &PitchShift) -> std::io::Result<()> {
+        let mut command = Command::new("ffmpeg");
         command
             .arg("-i")
             .arg(&self.input_file)
             .arg("-threads")
             .arg("16")
-            // Enable filter threading
             .arg("-filter_threads")
             .arg("16")
-            // Enable complex filter threading
             .arg("-filter_complex_threads")
             .arg("16")
-            // Enable more aggressive thread-based optimization
             .arg("-thread_type")
             .arg("frame")
             .arg("-filter_complex")
-            .arg(self.build_filter_complex())
+            .arg(self.build_filter_complex(shift))
             .args(self.build_stream_mappings())
-            .arg("-c:v")
-            .arg("copy")
             .args(self.build_audio_encodings())
             .arg("-f")
             .arg("dash")
@@ -121,19 +121,49 @@ impl DashPitchShifter {
             .arg(self.build_adaptation_sets())
             .arg("-seg_duration")
             .arg("4")
-            .arg(&self.output_file);
+            .arg(self.get_output_path(shift.semitones));
 
-        println!("Executing FFmpeg command:");
+        println!("Executing FFmpeg command for {} semitones:", shift.semitones);
         println!("{:?}", command);
 
-        let output = command.output()?;
-
+        let output = command.output().await?;
         if !output.status.success() {
             let error = String::from_utf8_lossy(&output.stderr);
             eprintln!("FFmpeg error: {}", error);
             return Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                "FFmpeg command failed",
+                format!("FFmpeg command failed for {} semitones", shift.semitones),
+            ));
+        }
+        Ok(())
+    }
+
+    pub async fn execute(&self) -> std::io::Result<()> {
+        // Ensure output directories exist before processing
+        self.ensure_output_directories().await?;
+
+        // Create futures for all shifts
+        let futures = self.shifts.iter().map(|shift| self.process_shift(shift));
+
+        // Execute all futures concurrently
+        let results = join_all(futures).await;
+        
+        // Check for any errors
+        let errors: Vec<_> = results
+            .into_iter()
+            .enumerate()
+            .filter_map(|(i, r)| r.err().map(|e| (self.shifts[i].semitones, e)))
+            .collect();
+
+        if !errors.is_empty() {
+            let error_msg = errors
+                .iter()
+                .map(|(semitones, e)| format!("Semitones {}: {}", semitones, e))
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Multiple FFmpeg commands failed:\n{}", error_msg),
             ));
         }
 

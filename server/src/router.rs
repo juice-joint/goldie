@@ -14,7 +14,7 @@ use crate::{actors::song_coordinator::SongActorHandle, lib::file_storage::storag
 use crate::actors::video_downloader::VideoDlActorHandle;
 use crate::lib::yt_downloader::YtDownloader;
 use crate::routes::karaoke::{current_song, play_next_song, queue_song, song_list, sse};
-use crate::routes::streaming::serve_dash_file;
+use crate::routes::streaming::{serve_dash_file, serve_media_file};
 use crate::routes::sys::server_ip;
 use crate::{routes::healthcheck::healthcheck, state::AppState};
 
@@ -38,6 +38,7 @@ pub async fn create_router_with_state() -> Router {
             .route("/song_list", get(song_list))
             .route("/current_song", get(current_song))
             .route("/dash/{song_name}/{file}", get(serve_dash_file))
+            .route("/dash/{song_name}/{stream}/{file}", get(serve_media_file))
             .route("/sse", get(sse))
             .route("/toggle_playback", post(toggle_playback))
             .route("/key_up", post(key_up))
