@@ -176,7 +176,21 @@ impl SongActor {
                     self.song_deque.remove(index);
                 }
 
-                let _ = respond_to.send(());
+                match self.sse_broadcaster.send(SseEvent::QueueUpdated {
+                    queue: self.song_deque.clone(),
+                }) {
+                    Ok(_) => {
+                        let _ = respond_to.send(());
+                    }
+                    Err(err) => {
+                        warn!(
+                            "failed to broadcast SSE event for queue update event for song: {} with error: {}", 
+                            song_uuid, 
+                            err
+                        );
+                        let _ = respond_to.send(());
+                    }
+                }
             }
             SongActorMessage::PopSong { respond_to } => {
                 // remove all failed songs while getting the next one
