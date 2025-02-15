@@ -31,6 +31,8 @@ function VideoPlayer() {
       const targetTrack = tracks.find(
         (track) => track.id?.toString() === trackId
       );
+      console.log(targetTrack);
+
       if (targetTrack) {
         player.setCurrentTrack(targetTrack);
       }
