@@ -69,15 +69,16 @@ impl DashPitchShifter {
     }
 
     fn get_output_path(&self, semitones: i32) -> String {
+        // please forgive me for this
         let index = match semitones {
-            -3 => 7,
-            -2 => 6,
-            -1 => 5,
-            0 => 1,
-            1 => 2,
-            2 => 3,
-            3 => 4,
-            _ => 1,
+            -3 => 1,
+            -2 => 2,
+            -1 => 3,
+            0 => 4,
+            1 => 5,
+            2 => 6,
+            3 => 7,
+            _ => 4,
         };
 
         format!("{}/pitch{}/stream.mpd", self.output_dir, index)
