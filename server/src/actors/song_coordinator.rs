@@ -109,6 +109,9 @@ pub enum SongCoordinatorError {
     #[error("unable to queue song: {uuid}")]
     QueueSongFailed { uuid: Uuid },
 
+    #[error("song already queued: {name}")]
+    SongAlreadyQueued { name: String },
+
     #[error("unable to remove song: {uuid}")]
     RemoveSongFailed { uuid: Uuid },
 
@@ -153,18 +156,22 @@ impl SongActor {
     async fn handle_message(&mut self, msg: SongActorMessage) {
         match msg {
             SongActorMessage::QueueSong { song, respond_to } => {
-                self.song_deque.push_back(song.clone());
+                if self.song_deque.contains(&song) {
+                    let _ = respond_to.send(Err(SongCoordinatorError::SongAlreadyQueued { name: song.name }));
+                } else {
+                    self.song_deque.push_back(song.clone());
 
-                match self.sse_broadcaster.send(SseEvent::QueueUpdated {
-                    queue: self.song_deque.clone(),
-                }) {
-                    Ok(_) => {
-                        let _ = respond_to.send(Ok(()));
-                    }
-                    Err(err) => {
-                        // Remove the song since broadcasting failed
-                        warn!("failed to broadcast SSE event for queue update event for song: {} with error: {}", song.uuid, err);
-                        let _ = respond_to.send(Ok(()));
+                    match self.sse_broadcaster.send(SseEvent::QueueUpdated {
+                        queue: self.song_deque.clone(),
+                    }) {
+                        Ok(_) => {
+                            let _ = respond_to.send(Ok(()));
+                        }
+                        Err(err) => {
+                            // Remove the song since broadcasting failed
+                            warn!("failed to broadcast SSE event for queue update event for song: {} with error: {}", song.uuid, err);
+                            let _ = respond_to.send(Ok(()));
+                        }
                     }
                 }
             }

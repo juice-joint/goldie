@@ -23,7 +23,7 @@ use tracing::{error, info, trace};
 use crate::{
     actors::{
         song_coordinator::{QueuedSongStatus, Song, SongActorHandle, SongCoordinatorError},
-        video_downloader::{DownloadVideoResponse, VideoDlActorHandle},
+        video_downloader::{VideoDlActorHandle},
     },
     state::AppState,
 };

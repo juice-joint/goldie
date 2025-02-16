@@ -15,14 +15,9 @@ use crate::lib::{
 pub enum VideoDlActorMessage {
     DownloadVideo {
         yt_link: String,
-        file_path: String,
+        name: String,
         respond_to: oneshot::Sender<Result<String, VideoProcessError>>,
     },
-}
-
-pub enum DownloadVideoResponse {
-    Success { video_file_path: String },
-    Fail,
 }
 
 struct VideoDlActor {
@@ -51,12 +46,12 @@ impl VideoDlActor {
         match msg {
             VideoDlActorMessage::DownloadVideo {
                 yt_link,
-                file_path,
+                name,
                 respond_to,
             } => {
                 println!("Consumer {} starting to process video from {} to path {}", 
-                    self.consumer_id, yt_link, file_path);
-                let result = self.process_video(&yt_link, &file_path).await;
+                    self.consumer_id, yt_link, name);
+                let result = self.process_video(&yt_link, &name).await;
                 println!("Consumer {} finished processing video from {}: {:?}", 
                     self.consumer_id, yt_link, 
                     if result.is_ok() { "success" } else { "failed" });
@@ -157,7 +152,7 @@ impl VideoDlActorHandle {
         let (send, recv) = oneshot::channel();
         let msg = VideoDlActorMessage::DownloadVideo {
             yt_link: yt_link.clone(),
-            file_path: file_path.clone(),
+            name: file_path.clone(),
             respond_to: send,
         };
 
