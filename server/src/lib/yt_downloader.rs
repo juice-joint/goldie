@@ -50,7 +50,7 @@ impl YtDownloader {
             format!("{}", yt_link.to_string()),
         ];
 
-        println!("yt-dlp command: {:?}", args);
+        //println!("yt-dlp command: {:?}", args);
 
         let output = Command::new("yt-dlp")
             .args(&args)

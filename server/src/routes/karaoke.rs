@@ -47,8 +47,6 @@ pub async fn queue_song(
         Ok(_) => {
             info!("successfully queued song: {}", queueable_song.uuid);
 
-
-            
             tokio::spawn(async move {
                 match videodl_actor_handle
                     .download_video(queueable_song.yt_link, queueable_song.name.to_string())
