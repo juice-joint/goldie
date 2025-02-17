@@ -23,24 +23,21 @@ pub enum VideoProcessError {
 // Core video download functionality
 #[derive(Clone)]
 pub struct YtDownloader {
-    base_dir: String,
 }
 
 impl YtDownloader {
-    pub fn new(base_dir: String) -> Self {
-        Self { base_dir }
-    }
 
     pub async fn download(
         &self,
         yt_link: &str,
-        file_path: &str,
+        base_dir: &str,
+        file_name: &str,
     ) -> Result<(String, String, String), VideoProcessError> {
         let args = vec![
             "-f".to_string(),
             "bestvideo[height<=720][vcodec^=avc1]+bestaudio".to_string(),
             "-o".to_string(),
-            format!("{}/{}/{}.%(ext)s", self.base_dir, file_path, file_path),
+            format!("{}/{}/{}.%(ext)s", base_dir, file_name, file_name),
             "--merge-output-format".to_string(),
             "mp4".to_string(),
             "--restrict-filenames".to_string(),
@@ -88,7 +85,7 @@ impl YtDownloader {
         Ok((
             directory.to_string(),
             name.to_string(),
-            format!("{}", ext),
+            ext.to_string(),
         ))
     }
 }

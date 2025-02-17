@@ -13,13 +13,8 @@ mod actors {
 }
 
 mod lib {
-    pub mod file_storage;
-    pub mod os;
     pub mod pitch_shifter;
-    pub mod video_extractor;
     pub mod yt_downloader;
-    pub mod xml_mpd;
-    pub mod test;
 }
 
 use tower_http::{

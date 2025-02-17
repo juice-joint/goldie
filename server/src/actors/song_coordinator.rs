@@ -54,7 +54,7 @@ impl Song {
 
 impl PartialEq for Song {
     fn eq(&self, other: &Self) -> bool {
-        self.uuid == other.uuid
+        self.uuid == other.uuid || self.name == other.name
     }
 }
 
@@ -157,6 +157,7 @@ impl SongActor {
         match msg {
             SongActorMessage::QueueSong { song, respond_to } => {
                 if self.song_deque.contains(&song) {
+
                     let _ = respond_to.send(Err(SongCoordinatorError::SongAlreadyQueued { name: song.name }));
                 } else {
                     self.song_deque.push_back(song.clone());

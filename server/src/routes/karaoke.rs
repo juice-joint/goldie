@@ -1,28 +1,23 @@
 use std::{collections::VecDeque, convert::Infallible, sync::Arc};
 
 use axum::{
-    body::Body,
     debug_handler,
-    extract::{Path, State},
-    http::{
-        header::{self, ACCEPT_RANGES},
-        StatusCode,
-    },
+    extract::State,
+    http::StatusCode,
     response::{
         sse::{Event, KeepAlive},
-        IntoResponse, Response, Sse,
+        IntoResponse, Sse,
     },
     Json,
 };
 use futures_util::{stream, StreamExt};
 use serde::Deserialize;
-use tokio::{fs::File, sync};
-use tokio_util::io::ReaderStream;
-use tracing::{error, info, trace};
+use tokio::sync;
+use tracing::{error, info};
 
 use crate::{
     actors::{
-        song_coordinator::{QueuedSongStatus, Song, SongActorHandle, SongCoordinatorError},
+        song_coordinator::{QueuedSongStatus, Song, SongActorHandle},
         video_downloader::{VideoDlActorHandle},
     },
     state::AppState,

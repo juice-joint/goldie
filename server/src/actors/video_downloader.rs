@@ -1,14 +1,9 @@
-use std::{fs, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 
-use quick_xml::{de::from_str, se::to_string};
-use thiserror::Error;
 use tokio::sync::oneshot;
-use uuid::Uuid;
 
 use crate::lib::{
     pitch_shifter::DashPitchShifter, 
-    video_extractor::DashVideoProcessor, 
-    xml_mpd::{self, XmlMpdUtil, MPD}, 
     yt_downloader::{VideoProcessError, YtDownloader}
 };
 
@@ -22,19 +17,23 @@ pub enum VideoDlActorMessage {
 
 struct VideoDlActor {
     receiver: async_channel::Receiver<VideoDlActorMessage>,
+
     downloader: Arc<YtDownloader>,
+    base_dir: String,
     consumer_id: u8,
 }
 
 impl VideoDlActor {
     fn new(
         receiver: async_channel::Receiver<VideoDlActorMessage>,
+        base_dir: String,
         video_downloader: Arc<YtDownloader>,
         consumer_id: u8,
     ) -> Self {
         println!("Initializing VideoDlActor consumer {}", consumer_id);
         VideoDlActor {
             receiver,
+            base_dir,
             downloader: video_downloader,
             consumer_id,
         }
@@ -51,18 +50,25 @@ impl VideoDlActor {
             } => {
                 println!("Consumer {} starting to process video from {} to path {}", 
                     self.consumer_id, yt_link, name);
-                let result = self.process_video(&yt_link, &name).await;
-                println!("Consumer {} finished processing video from {}: {:?}", 
-                    self.consumer_id, yt_link, 
-                    if result.is_ok() { "success" } else { "failed" });
-                let _ = respond_to.send(result);
+
+                if Path::new(&format!("{}/{}", self.base_dir, name)).exists() {
+                    println!("Consumer {} found existing processed video {} in path {}/{}", 
+                        self.consumer_id, yt_link, self.base_dir, name);
+                    let _ = respond_to.send(Ok(String::from("success")));
+                } else {
+                    let result = self.process_video(&yt_link, &self.base_dir, &name).await;
+                    println!("Consumer {} finished processing video from {}: {:?}", 
+                        self.consumer_id, yt_link, 
+                        if result.is_ok() { "success" } else { "failed" });
+                    let _ = respond_to.send(result);
+                }
             }
         }
     }
 
-    async fn process_video(&self, yt_link: &str, file_path: &str) -> Result<String, VideoProcessError> {
+    async fn process_video(&self, yt_link: &str, base_dir: &str, name: &str) -> Result<String, VideoProcessError> {
         println!("Consumer {} starting download of {}", self.consumer_id, yt_link);
-        let (dir, file_name, extension) = self.downloader.download(yt_link, &file_path).await?;
+        let (dir, file_name, extension) = self.downloader.download(yt_link, base_dir, name).await?;
         println!("Consumer {} completed download. Dir: {}, File: {}.{}", 
             self.consumer_id, dir, file_name, extension);
 
@@ -126,7 +132,7 @@ pub struct VideoDlActorHandle {
 }
 
 impl VideoDlActorHandle {
-    pub fn new(yt_downloader: Arc<YtDownloader>) -> Self {
+    pub fn new(base_dir: String, yt_downloader: Arc<YtDownloader>) -> Self {
         println!("Initializing VideoDlActorHandle");
         let (sender, receiver) = async_channel::bounded(100);
         println!("Created channel with capacity: {}", sender.capacity().unwrap());
@@ -135,7 +141,7 @@ impl VideoDlActorHandle {
         println!("Starting {} consumers", NUM_CONSUMERS);
         for consumer_id in 0..NUM_CONSUMERS {
             println!("Spawning consumer {}", consumer_id);
-            let actor = VideoDlActor::new(receiver.clone(), yt_downloader.clone(), consumer_id);
+            let actor = VideoDlActor::new(receiver.clone(), base_dir.clone(), yt_downloader.clone(), consumer_id);
             tokio::spawn(run_video_dl_actor(actor));
         }
         println!("All consumers spawned");
