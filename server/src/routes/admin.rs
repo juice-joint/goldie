@@ -29,7 +29,6 @@ pub async fn key_up(
 pub async fn key_down(
     State(song_actor_handle): State<Arc<SongActorHandle>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    println!("HUHFAW");
     let song_actor_response = song_actor_handle.key_down().await;
     match song_actor_response {
         Ok(current_key) => Ok((StatusCode::OK, Json(current_key))),
@@ -43,7 +42,6 @@ pub async fn get_key(
     let song_actor_response = song_actor_handle.get_key().await;
     match song_actor_response {
         Ok(current_key) => { 
-            println!("{:?}", current_key);
             Ok((StatusCode::OK, Json(current_key))) 
         },
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),

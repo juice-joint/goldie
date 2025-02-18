@@ -29,6 +29,7 @@ pub struct Song {
     pub uuid: Uuid,
     pub yt_link: String,
     pub status: QueuedSongStatus,
+    pub is_key_changeable: bool
 }
 
 impl Display for Song {
@@ -42,12 +43,13 @@ impl Display for Song {
 }
 
 impl Song {
-    pub fn new(name: String, yt_link: String, status: QueuedSongStatus) -> Self {
+    pub fn new(name: String, yt_link: String, status: QueuedSongStatus, is_key_changeable: bool) -> Self {
         Song {
             name: name.to_string(),
             uuid: Uuid::new_v4(),
             yt_link,
             status,
+            is_key_changeable
         }
     }
 }
@@ -300,8 +302,6 @@ impl SongActor {
 
                     let _ = respond_to.send(Ok(()));
                 } else {
-                    println!("failed uuid {}", song_uuid);
-
                     let _ = respond_to.send(Err(SongCoordinatorError::UpdateSongStatusFailed {
                         uuid: (song_uuid),
                     }));

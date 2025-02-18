@@ -23,6 +23,7 @@ use tower_http::{
     cors::{Any, CorsLayer},
     trace::TraceLayer,
 };
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 use crate::router::create_router_with_state;
@@ -47,7 +48,7 @@ async fn main() {
         .layer(cors_layer)
         .layer(TraceLayer::new_for_http());
 
-    println!("Server started. Please listen on 127.0.0.1:8000");
+    info!("Server started. Please listen on 127.0.0.1:8000");
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }

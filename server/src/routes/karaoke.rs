@@ -27,8 +27,8 @@ use crate::{
 #[derive(Deserialize)]
 pub struct QueueSong {
     name: String,
-    should_pitch_shift: bool,
     yt_link: String,
+    is_key_changeable: bool,
 }
 
 #[debug_handler(state = AppState)]
@@ -37,10 +37,8 @@ pub async fn queue_song(
     State(videodl_actor_handle): State<Arc<VideoDlActorHandle>>,
     Json(payload): Json<QueueSong>,
 ) -> impl IntoResponse {
-    let queueable_song = Song::new(payload.name, payload.yt_link, QueuedSongStatus::InProgress);
+    let queueable_song = Song::new(payload.name, payload.yt_link, QueuedSongStatus::InProgress, payload.is_key_changeable);
     info!("received queue_song request: {}", queueable_song);
-
-    let should_pitch_shift = payload.should_pitch_shift;
 
     match song_actor_handle.queue_song(queueable_song.clone()).await {
         Ok(_) => {
@@ -51,7 +49,7 @@ pub async fn queue_song(
                     .download_video(
                         queueable_song.yt_link,
                         queueable_song.name.to_string(),
-                        should_pitch_shift,
+                        queueable_song.is_key_changeable,
                     )
                     .await
                 {

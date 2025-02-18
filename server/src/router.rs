@@ -1,3 +1,5 @@
+use std::env;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::routing::{get_service, post};
@@ -40,9 +42,11 @@ pub async fn create_router_with_state() -> Router {
         sse_broadcaster.clone(),
     );
 
+    let (host_path, phippy_path) = get_dist_paths();
+
     Router::new()
-        .nest_service("/goldie", get_service(ServeDir::new("../host/dist")))
-        .nest_service("/phippy", get_service(ServeDir::new("../../phippy/dist")))
+        .nest_service("/goldie", get_service(ServeDir::new(host_path)))
+        .nest_service("/phippy", get_service(ServeDir::new(phippy_path)))
         .route("/api/healthcheck", get(healthcheck))
         .route("/server_ip", get(server_ip))
         .route("/queue_song", post(queue_song))
@@ -60,4 +64,19 @@ pub async fn create_router_with_state() -> Router {
         .route("/remove_song", post(remove_song))
         .route("/search", get(search))
         .with_state(app_state)
+}
+
+fn get_dist_paths() -> (PathBuf, PathBuf) {
+    match env::var("DOCKER_ENV") {
+        Ok(_) => (
+            // Docker paths
+            PathBuf::from("./goldie/host/dist"),
+            PathBuf::from("./phippy/dist"),
+        ),
+        Err(_) => (
+            // Development paths
+            PathBuf::from("./host/dist"),
+            PathBuf::from("../../phippy/dist"),
+        ),
+    }
 }

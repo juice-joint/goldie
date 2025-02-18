@@ -1,5 +1,5 @@
 use std::process::Command;
-use tracing::debug;
+use tracing::{debug, error};
 
 #[derive(Debug)]
 pub enum ProcessingMode {
@@ -133,7 +133,7 @@ impl DashProcessor {
         let output = command.output()?;
         if !output.status.success() {
             let error = String::from_utf8_lossy(&output.stderr);
-            eprintln!("FFmpeg error: {}", error);
+            error!("FFmpeg error: {}", error);
             return Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 "FFmpeg command failed",
