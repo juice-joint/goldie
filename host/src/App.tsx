@@ -1,5 +1,4 @@
 import { useCurrentSong } from "./api/queries/useCurrentSong";
-import { useKey } from "./api/queries/useKey";
 import { useEventSource } from "./api/sse/useEventSource";
 import { ErrorScreen } from "./components/error/component";
 import QRCodeBanner from "./components/qr-code/component";
@@ -9,7 +8,6 @@ import { VideoPlayer } from "./components/video-player";
 function App() {
   const currentSong = useCurrentSong();
   const { error } = useEventSource();
-  const key = useKey();
   if (error) {
     return <ErrorScreen />;
   }

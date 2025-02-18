@@ -2,7 +2,7 @@ use std::{collections::VecDeque, convert::Infallible, sync::Arc};
 
 use axum::{
     debug_handler,
-    extract::State,
+    extract::{Query, State},
     http::StatusCode,
     response::{
         sse::{Event, KeepAlive},
@@ -18,7 +18,8 @@ use tracing::{error, info};
 use crate::{
     actors::{
         song_coordinator::{QueuedSongStatus, Song, SongActorHandle},
-        video_downloader::{VideoDlActorHandle},
+        video_downloader::VideoDlActorHandle,
+        video_searcher::VideoSearcherActorHandle,
     },
     state::AppState,
 };
@@ -26,6 +27,7 @@ use crate::{
 #[derive(Deserialize)]
 pub struct QueueSong {
     name: String,
+    should_pitch_shift: bool,
     yt_link: String,
 }
 
@@ -38,13 +40,19 @@ pub async fn queue_song(
     let queueable_song = Song::new(payload.name, payload.yt_link, QueuedSongStatus::InProgress);
     info!("received queue_song request: {}", queueable_song);
 
+    let should_pitch_shift = payload.should_pitch_shift;
+
     match song_actor_handle.queue_song(queueable_song.clone()).await {
         Ok(_) => {
             info!("successfully queued song: {}", queueable_song.uuid);
 
             tokio::spawn(async move {
                 match videodl_actor_handle
-                    .download_video(queueable_song.yt_link, queueable_song.name.to_string())
+                    .download_video(
+                        queueable_song.yt_link,
+                        queueable_song.name.to_string(),
+                        should_pitch_shift,
+                    )
                     .await
                 {
                     Ok(video_file_path) => {
@@ -149,6 +157,26 @@ pub async fn current_song(
             None => StatusCode::NO_CONTENT.into_response(),
         },
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct SearchSong {
+    query: String,
+}
+
+pub async fn search(
+    State(videosearcher_actor_handle): State<Arc<VideoSearcherActorHandle>>,
+    search_request: Query<SearchSong>,
+) -> impl IntoResponse {
+    match videosearcher_actor_handle.search_videos(&search_request.query).await {
+        Ok(results) => {
+            (StatusCode::OK, Json(results)).into_response()
+        }
+        Err(_) => {
+            error!("search failed for {}", search_request.query);
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
     }
 }
 

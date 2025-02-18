@@ -10,11 +10,13 @@ mod state;
 mod actors {
     pub mod song_coordinator;
     pub mod video_downloader;
+    pub mod video_searcher;
 }
 
 mod lib {
-    pub mod pitch_shifter;
+    pub mod dash_processor;
     pub mod yt_downloader;
+    pub mod yt_searcher;
 }
 
 use tower_http::{
