@@ -5,5 +5,6 @@ export const QUERY_KEYS = {
   ip: ["ip"] as const,
   key: ["key"] as const,
   playback: ["playback"] as const,
+  restart: ["restart"] as const,
   queue: ["sse", EventType.QueueChangeEvent] as const,
 };

@@ -6,6 +6,7 @@ import { useCurrentSong } from "../../api/queries/useCurrentSong";
 import { useKey } from "../../api/queries/useKey";
 import { usePlayback } from "../../api/queries/usePlayback";
 import { API_URL } from "../../api/sse/eventSource";
+import { useRestart } from "../../api/queries/useRestart";
 
 function VideoPlayer() {
   const currentSong = useCurrentSong();
@@ -16,6 +17,7 @@ function VideoPlayer() {
   const playbackState = usePlayback();
   const key = useKey();
   const [countdown, setCountdown] = useState(5);
+  const restart = useRestart();
 
   const handleEnded = useCallback(() => {
     playNextSong();
@@ -31,14 +33,19 @@ function VideoPlayer() {
       const targetTrack = tracks.find(
         (track) => track.id?.toString() === trackId
       );
-      console.log(targetTrack);
-
       if (targetTrack) {
         player.setCurrentTrack(targetTrack);
       }
     },
     []
   );
+
+  useEffect(() => {
+    if (playerRef.current) {
+      playerRef.current.seek(0);
+      playerRef.current.play();
+    }
+  }, [restart]);
 
   useEffect(() => {
     if (playbackState) {

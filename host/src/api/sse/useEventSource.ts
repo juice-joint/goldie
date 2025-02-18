@@ -47,6 +47,13 @@ export const useEventSource = () => {
                   queryClient.setQueryData(QUERY_KEYS.playback, !oldQueryData);
                   break;
                 }
+                case EventType.RestartSong: {
+                  const oldQueryData = queryClient.getQueryData<boolean>(
+                    QUERY_KEYS.restart
+                  );
+                  queryClient.setQueryData(QUERY_KEYS.restart, !oldQueryData);
+                  break;
+                }
                 default:
                   console.warn("invalid event type", data);
                   return;

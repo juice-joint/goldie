@@ -4,6 +4,7 @@ export enum EventType {
   QueueChangeEvent = "QueueUpdated",
   KeyChange = "KeyChange",
   TogglePlayback = "TogglePlayback",
+  RestartSong = "RestartSong",
 }
 
 export type QueueUpdatedEvent = {
@@ -20,4 +21,12 @@ export type TogglePlaybackEvent = {
   type: EventType.TogglePlayback;
 };
 
-export type SSEEvent = QueueUpdatedEvent | TogglePlaybackEvent | KeyChangeEvent;
+export type RestartSongEvent = {
+  type: EventType.RestartSong;
+};
+
+export type SSEEvent =
+  | QueueUpdatedEvent
+  | TogglePlaybackEvent
+  | KeyChangeEvent
+  | RestartSongEvent;
