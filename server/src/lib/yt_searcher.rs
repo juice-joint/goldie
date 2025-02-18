@@ -33,6 +33,7 @@ impl YtSearcher {
             "-j",
             "--no-playlist",
             "--flat-playlist",
+            "--no-channel",
             &search_query,
         ];
         
