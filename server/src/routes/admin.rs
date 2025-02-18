@@ -85,3 +85,11 @@ pub async fn remove_song(
     Ok(StatusCode::OK)
 }
 
+#[debug_handler(state = AppState)]
+pub async fn restart_song(
+    State(sse_broadcaster): State<Arc<sync::broadcast::Sender<SseEvent>>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let _ = sse_broadcaster.send(SseEvent::RestartSong);
+    Ok(StatusCode::ACCEPTED)
+}
+

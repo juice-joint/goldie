@@ -1,18 +1,24 @@
-use std::{fs::File, io::{BufRead, BufReader, Write}, path::Path, sync::Arc};
-
+use serde::{Deserialize, Serialize};
+use std::{fs::File, io::BufReader, path::Path, sync::Arc};
 use tokio::sync::oneshot;
-use tracing::{error, info, trace};
+use tracing::{debug, error, info, trace};
 
 use crate::lib::{
     dash_processor::{DashProcessor, ProcessingMode},
     yt_downloader::{VideoProcessError, YtDownloader},
 };
 
+#[derive(Serialize, Deserialize)]
+struct VideoStatus {
+    segments: u32,
+    is_key_changeable: bool,
+}
+
 pub enum VideoDlActorMessage {
     DownloadVideo {
         yt_link: String,
         name: String,
-        pitch_shift: bool,
+        is_key_changeable: bool,
         respond_to: oneshot::Sender<Result<String, VideoProcessError>>,
     },
 }
@@ -50,7 +56,7 @@ impl VideoDlActor {
             VideoDlActorMessage::DownloadVideo {
                 yt_link,
                 name,
-                pitch_shift,
+                is_key_changeable,
                 respond_to,
             } => {
                 info!(
@@ -60,16 +66,39 @@ impl VideoDlActor {
 
                 let video_path = format!("{}/{}", self.base_dir, name);
 
-                info!("exists: {}", self.check_segments_and_chunks(&video_path));
-                if Path::new(&video_path).exists() && self.check_segments_and_chunks(&video_path) {
+                info!(
+                    "video exists: {}",
+                    self.video_exists(&video_path, is_key_changeable)
+                );
+                if Path::new(&video_path).exists()
+                    && self.video_exists(&video_path, is_key_changeable)
+                {
                     info!(
                         "Consumer {} found existing processed video {} in path {}/{}",
                         self.consumer_id, yt_link, self.base_dir, name
                     );
                     let _ = respond_to.send(Ok(String::from("success")));
                 } else {
+                    if Path::new(&video_path).exists() {
+                        trace!(
+                            "Consumer {} clearing existing folder at {}",
+                            self.consumer_id,
+                            video_path
+                        );
+                        if let Err(e) = std::fs::remove_dir_all(&video_path) {
+                            error!(
+                                "Consumer {} failed to clear folder {}: {}",
+                                self.consumer_id, video_path, e
+                            );
+                            let _ = respond_to.send(Err(VideoProcessError::PitchShiftError(
+                                format!("Failed to clear existing folder: {}", e)
+                            )));
+                            return;
+                        }
+                    }
+
                     let result = self
-                        .process_video(&yt_link, &self.base_dir, &name, &pitch_shift, &4)
+                        .process_video(&yt_link, &self.base_dir, &name, &is_key_changeable, &4)
                         .await;
                     info!(
                         "Consumer {} finished processing video from {}: {:?}",
@@ -83,25 +112,25 @@ impl VideoDlActor {
         }
     }
 
-    fn check_segments_and_chunks(&self, base_path: &str) -> bool {
-        let segments_path = format!("{}/segments.txt", base_path);
-        
-        // Check if segments.txt exists
-        if !Path::new(&segments_path).exists() {
+    fn video_exists(&self, base_path: &str, is_key_changeable: bool) -> bool {
+        let status_path = format!("{}/status.json", base_path);
+
+        // Check if status.json exists
+        if !Path::new(&status_path).exists() {
             trace!(
-                "Consumer {} - segments.txt not found at {}",
+                "Consumer {} - status.json not found at {}",
                 self.consumer_id,
-                segments_path
+                status_path
             );
             return false;
         }
 
-        // Read segments.txt
-        let file = match File::open(&segments_path) {
+        // Read and parse status.json
+        let file = match File::open(&status_path) {
             Ok(file) => file,
             Err(e) => {
                 trace!(
-                    "Consumer {} - Failed to open segments.txt: {}",
+                    "Consumer {} - Failed to open status.json: {}",
                     self.consumer_id,
                     e
                 );
@@ -109,24 +138,11 @@ impl VideoDlActor {
             }
         };
 
-        let reader = BufReader::new(file);
-        let first_line = match reader.lines().next() {
-            Some(Ok(line)) => line,
-            _ => {
-                trace!(
-                    "Consumer {} - Failed to read first line from segments.txt",
-                    self.consumer_id
-                );
-                return false;
-            }
-        };
-
-        // Parse the number from segments.txt
-        let segment_num = match first_line.trim().parse::<u32>() {
-            Ok(num) => num,
+        let status: VideoStatus = match serde_json::from_reader(BufReader::new(file)) {
+            Ok(status) => status,
             Err(e) => {
                 trace!(
-                    "Consumer {} - Failed to parse segment number from segments.txt: {}",
+                    "Consumer {} - Failed to parse status.json: {}",
                     self.consumer_id,
                     e
                 );
@@ -134,8 +150,20 @@ impl VideoDlActor {
             }
         };
 
+        // Check key_changeable compatibility
+        if is_key_changeable && !status.is_key_changeable {
+            trace!(
+                "Consumer {} - Key change requested but existing file doesn't support it",
+                self.consumer_id
+            );
+            return false;
+        }
+
         // Check if corresponding chunk file exists
-        let chunk_path = format!("{}/chunk-stream1-{:05}.m4s", base_path, segment_num);
+        let chunk_path = format!("{}/chunk-stream1-{:05}.m4s", base_path, status.segments);
+    
+        debug!("chunk_path: {}", chunk_path);
+
         let chunk_exists = Path::new(&chunk_path).exists();
 
         trace!(
@@ -153,7 +181,7 @@ impl VideoDlActor {
         yt_link: &str,
         base_dir: &str,
         name: &str,
-        pitch_shift: &bool,
+        is_key_changeable: &bool,
         segment_duration: &u32,
     ) -> Result<String, VideoProcessError> {
         trace!(
@@ -169,43 +197,42 @@ impl VideoDlActor {
             video_metadata.duration_seconds,
         );
 
-        let duration_file_path = format!("{}/segments.txt", dir);
-        match File::create(&duration_file_path) {
-            Ok(mut file) => match write!(
-                file,
-                "{}",
-                (duration_seconds / (*segment_duration as f64)).ceil()
-            ) {
-                Ok(_) => {
+        let status_file_path = format!("{}/status.json", dir);
+        let status = VideoStatus {
+            segments: (duration_seconds / (*segment_duration as f64)).ceil() as u32,
+            is_key_changeable: *is_key_changeable,
+        };
+
+        match File::create(&status_file_path) {
+            Ok(file) => {
+                if let Err(e) = serde_json::to_writer_pretty(file, &status) {
                     trace!(
-                        "Consumer {} wrote duration {} seconds to {}",
+                        "Consumer {} failed to write status file {}: {}",
                         self.consumer_id,
-                        duration_seconds,
-                        duration_file_path
-                    );
-                }
-                Err(e) => {
-                    trace!(
-                        "Consumer {} failed to write duration to {}: {}",
-                        self.consumer_id,
-                        duration_file_path,
+                        status_file_path,
                         e
                     );
                     return Err(VideoProcessError::PitchShiftError(format!(
-                        "Failed to write duration: {}",
+                        "Failed to write status file: {}",
                         e
                     )));
                 }
-            },
+                trace!(
+                    "Consumer {} wrote status file with {} segments to {}",
+                    self.consumer_id,
+                    status.segments,
+                    status_file_path
+                );
+            }
             Err(e) => {
                 trace!(
-                    "Consumer {} failed to create duration file {}: {}",
+                    "Consumer {} failed to create status file {}: {}",
                     self.consumer_id,
-                    duration_file_path,
+                    status_file_path,
                     e
                 );
                 return Err(VideoProcessError::PitchShiftError(format!(
-                    "Failed to create duration file: {}",
+                    "Failed to create status file: {}",
                     e
                 )));
             }
@@ -222,13 +249,13 @@ impl VideoDlActor {
         let dash_processor = DashProcessor::new(4);
         let mode;
 
-        if *pitch_shift {
+        if *is_key_changeable {
             trace!(
                 "Consumer {} starting dash processing with pitch shifting for {}",
                 self.consumer_id,
                 file_name
             );
-            mode = ProcessingMode::PitchShift(vec![--3, -2, -1, 0, 1, 2, 3])
+            mode = ProcessingMode::PitchShift(vec![-3, -2, -1, 0, 1, 2, 3])
         } else {
             trace!(
                 "Consumer {} starting dash processing with no pitch shifting for {}",
@@ -358,7 +385,7 @@ impl VideoDlActorHandle {
         let msg = VideoDlActorMessage::DownloadVideo {
             yt_link: yt_link.clone(),
             name: name.clone(),
-            pitch_shift: pitch_shift.clone(),
+            is_key_changeable: pitch_shift.clone(),
             respond_to: send,
         };
 

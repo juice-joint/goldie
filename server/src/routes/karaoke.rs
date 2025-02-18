@@ -184,6 +184,7 @@ pub enum SseEvent {
     QueueUpdated { queue: VecDeque<Song> },
     KeyChange { current_key: i8 },
     TogglePlayback,
+    RestartSong,
 }
 
 pub async fn sse(

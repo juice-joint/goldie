@@ -11,7 +11,7 @@ use crate::actors::video_downloader::VideoDlActorHandle;
 use crate::actors::video_searcher::VideoSearcherActorHandle;
 use crate::lib::yt_downloader::YtDownloader;
 use crate::lib::yt_searcher::YtSearcher;
-use crate::routes::admin::{get_key, remove_song, reposition_song};
+use crate::routes::admin::{get_key, remove_song, reposition_song, restart_song};
 use crate::routes::karaoke::{current_song, play_next_song, queue_song, search, song_list, sse};
 use crate::routes::streaming::{serve_dash_file, serve_media_file};
 use crate::routes::sys::server_ip;
@@ -62,6 +62,7 @@ pub async fn create_router_with_state() -> Router {
         .route("/get_key", get(get_key))
         .route("/reposition_song", post(reposition_song))
         .route("/remove_song", post(remove_song))
+        .route("/restart", post(restart_song))
         .route("/search", get(search))
         .with_state(app_state)
 }
